@@ -1,11 +1,11 @@
 -- MySQL dump of database 'en_US-demo' on host 'localhost'
 -- Backup Date and Time: 2019-01-21 11:16
--- Built by FrontAccounting 2.4.6
+-- Built by FrontAccounting 2.5.0
 -- http://frontaccounting.com
 -- Company: Training Co.
 -- User: Administrator
 
--- Compatibility: 2.4.1
+-- Compatibility: 2.5.0
 
 
 SET NAMES latin1;
@@ -149,6 +149,7 @@ CREATE TABLE `0_bank_trans` (
   `ref` varchar(40) DEFAULT NULL,
   `trans_date` date NOT NULL DEFAULT '0000-00-00',
   `amount` double DEFAULT NULL,
+  `charge` double DEFAULT NULL,
   `dimension_id` int(11) NOT NULL DEFAULT '0',
   `dimension2_id` int(11) NOT NULL DEFAULT '0',
   `person_type_id` int(11) NOT NULL DEFAULT '0',
@@ -164,11 +165,11 @@ CREATE TABLE `0_bank_trans` (
 -- Data of table `0_bank_trans` --
 
 INSERT INTO `0_bank_trans` VALUES
-('1', '12', '1', '2', '001/2018', '2018-05-10', '6240', '0', '0', '2', '1', NULL),
-('2', '12', '2', '2', '002/2018', '2018-05-07', '300', '0', '0', '2', '1', NULL),
-('3', '12', '3', '2', '003/2018', '2018-05-07', '0', '0', '0', '2', '1', NULL),
-('4', '1', '1', '1', '001/2018', '2018-05-07', '-5', '0', '0', '0', 'Goods received', NULL),
-('5', '12', '4', '2', '001/2019', '2019-01-21', '1250', '0', '0', '2', '1', NULL);
+('1', '12', '1', '2', '001/2018', '2018-05-10', '6240', '0', '0', '0', '2', '1', NULL),
+('2', '12', '2', '2', '002/2018', '2018-05-07', '300', '0', '0', '0', '2', '1', NULL),
+('3', '12', '3', '2', '003/2018', '2018-05-07', '0', '0', '0', '0', '2', '1', NULL),
+('4', '1', '1', '1', '001/2018', '2018-05-07', '-5', '0', '0', '0', '0', 'Goods received', NULL),
+('5', '12', '4', '2', '001/2019', '2019-01-21', '1250', '0', '0', '0', '2', '1', NULL);
 
 -- Structure of table `0_bom` --
 
@@ -524,6 +525,7 @@ CREATE TABLE `0_cust_allocations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `person_id` int(11) DEFAULT NULL,
   `amt` double unsigned DEFAULT NULL,
+  `discount` double unsigned DEFAULT '0',
   `date_alloc` date NOT NULL DEFAULT '0000-00-00',
   `trans_no_from` int(11) DEFAULT NULL,
   `trans_type_from` int(11) DEFAULT NULL,
@@ -538,10 +540,10 @@ CREATE TABLE `0_cust_allocations` (
 -- Data of table `0_cust_allocations` --
 
 INSERT INTO `0_cust_allocations` VALUES
-('1', '1', '6240', '2018-05-10', '1', '12', '1', '10'),
-('2', '1', '300', '2018-05-07', '2', '12', '2', '10'),
-('3', '1', '0', '2018-05-07', '3', '12', '4', '10'),
-('4', '1', '1250', '2019-01-21', '4', '12', '5', '10');
+('1', '1', '6240', '0', '2018-05-10', '1', '12', '1', '10'),
+('2', '1', '300', '0', '2018-05-07', '2', '12', '2', '10'),
+('3', '1', '0', '0', '2018-05-07', '3', '12', '4', '10'),
+('4', '1', '1250', '0', '2019-01-21', '4', '12', '5', '10');
 
 -- Structure of table `0_cust_branch` --
 
@@ -561,7 +563,7 @@ CREATE TABLE `0_cust_branch` (
   `sales_discount_account` varchar(15) NOT NULL DEFAULT '',
   `receivables_account` varchar(15) NOT NULL DEFAULT '',
   `payment_discount_account` varchar(15) NOT NULL DEFAULT '',
-  `default_ship_via` int(11) NOT NULL DEFAULT '1',
+  `default_ship_via` varchar(20) NOT NULL DEFAULT '',
   `br_post_address` tinytext NOT NULL,
   `group_no` int(11) NOT NULL DEFAULT '0',
   `notes` tinytext NOT NULL,
@@ -575,8 +577,19 @@ CREATE TABLE `0_cust_branch` (
 -- Data of table `0_cust_branch` --
 
 INSERT INTO `0_cust_branch` VALUES
-('1', '1', 'Donald Easter LLC', 'Donald Easter', 'N/A', '1', '1', 'DEF', '1', '', '4510', '1200', '4500', '1', 'N/A', '0', '', NULL, '0'),
-('2', '2', 'MoneyMaker Ltd.', 'MoneyMaker', '', '1', '1', 'DEF', '2', '', '4510', '1200', '4500', '1', '', '0', '', NULL, '0');
+('1', '1', 'Donald Easter LLC', 'Donald Easter', 'N/A', '1', '1', 'DEF', '1', '', '4510', '1200', '4500', 'post-std', 'N/A', '0', '', NULL, '0'),
+('2', '2', 'MoneyMaker Ltd.', 'MoneyMaker', '', '1', '1', 'DEF', '2', '', '4510', '1200', '4500', 'post-std', '', '0', '', NULL, '0');
+
+DROP TABLE IF EXISTS `0_sql_trail`;
+CREATE TABLE `0_db_trail` (
+		`id` int(11) NOT NULL AUTO_INCREMENT,
+		`stamp` timestamp DEFAULT CURRENT_TIMESTAMP,
+		`user` tinyint(3) unsigned NOT NULL DEFAULT '0',
+		`msg`  varchar(255) DEFAULT '',
+		`entry`  varchar(255) DEFAULT '',
+		`data` text DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE=MyISAM;
 
 -- Structure of table `0_debtor_trans` --
 
@@ -601,7 +614,7 @@ CREATE TABLE `0_debtor_trans` (
   `alloc` double NOT NULL DEFAULT '0',
   `prep_amount` double NOT NULL DEFAULT '0',
   `rate` double NOT NULL DEFAULT '1',
-  `ship_via` int(11) DEFAULT NULL,
+  `ship_via` varchar(20) NOT NULL DEFAULT '',
   `dimension_id` int(11) NOT NULL DEFAULT '0',
   `dimension2_id` int(11) NOT NULL DEFAULT '0',
   `payment_terms` int(11) DEFAULT NULL,
@@ -615,20 +628,20 @@ CREATE TABLE `0_debtor_trans` (
 -- Data of table `0_debtor_trans` --
 
 INSERT INTO `0_debtor_trans` VALUES
-('1', '10', '0', '1', '1', '2018-05-10', '2018-05-05', '001/2018', '1', '1', '6240', '0', '0', '0', '0', '6240', '0', '1', '1', '0', '0', '4', '1'),
-('2', '10', '0', '1', '1', '2018-05-07', '2018-05-07', '002/2018', '1', '2', '300', '0', '0', '0', '0', '300', '0', '1', '1', '0', '0', '4', '1'),
-('3', '10', '0', '2', '2', '2018-05-07', '2018-06-17', '003/2018', '1', '5', '267.14', '0', '0', '0', '0', '0', '0', '1.123', '1', '1', '0', '1', '1'),
-('4', '10', '0', '1', '1', '2018-05-07', '2018-05-07', '004/2018', '1', '7', '0', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '4', '1'),
-('5', '10', '0', '1', '1', '2019-01-21', '2019-01-21', '001/2019', '1', '8', '1250', '0', '0', '0', '0', '1250', '0', '1', '1', '0', '0', '4', '1'),
-('1', '12', '0', '1', '1', '2018-05-10', '0000-00-00', '001/2018', '0', '0', '6240', '0', '0', '0', '0', '6240', '0', '1', '0', '0', '0', NULL, '0'),
-('2', '12', '0', '1', '1', '2018-05-07', '0000-00-00', '002/2018', '0', '0', '300', '0', '0', '0', '0', '300', '0', '1', '0', '0', '0', NULL, '0'),
-('3', '12', '0', '1', '1', '2018-05-07', '0000-00-00', '003/2018', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', '0', '0', '0', NULL, '0'),
-('4', '12', '0', '1', '1', '2019-01-21', '0000-00-00', '001/2019', '0', '0', '1250', '0', '0', '0', '0', '1250', '0', '1', '0', '0', '0', NULL, '0'),
-('1', '13', '1', '1', '1', '2018-05-10', '2018-05-05', 'auto', '1', '1', '6240', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '4', '1'),
-('2', '13', '1', '1', '1', '2018-05-07', '2018-05-07', 'auto', '1', '2', '300', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '4', '1'),
-('3', '13', '1', '2', '2', '2018-05-07', '2018-06-17', 'auto', '1', '5', '267.14', '0', '0', '0', '0', '0', '0', '1.123', '1', '1', '0', '1', '1'),
-('4', '13', '1', '1', '1', '2018-05-07', '2018-05-07', 'auto', '1', '7', '0', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '4', '1'),
-('5', '13', '1', '1', '1', '2019-01-21', '2019-01-21', 'auto', '1', '8', '1250', '0', '0', '0', '0', '0', '0', '1', '1', '0', '0', '4', '1');
+('1', '10', '0', '1', '1', '2018-05-10', '2018-05-05', '001/2018', '1', '1', '6240', '0', '0', '0', '0', '6240', '0', '1', 'std-post', '0', '0', '4', '1'),
+('2', '10', '0', '1', '1', '2018-05-07', '2018-05-07', '002/2018', '1', '2', '300', '0', '0', '0', '0', '300', '0', '1', 'std-post', '0', '0', '4', '1'),
+('3', '10', '0', '2', '2', '2018-05-07', '2018-06-17', '003/2018', '1', '5', '267.14', '0', '0', '0', '0', '0', '0', '1.123', 'std-post', '1', '0', '1', '1'),
+('4', '10', '0', '1', '1', '2018-05-07', '2018-05-07', '004/2018', '1', '7', '0', '0', '0', '0', '0', '0', '0', '1', 'std-post', '0', '0', '4', '1'),
+('5', '10', '0', '1', '1', '2019-01-21', '2019-01-21', '001/2019', '1', '8', '1250', '0', '0', '0', '0', '1250', '0', '1', 'std-post', '0', '0', '4', '1'),
+('1', '12', '0', '1', '1', '2018-05-10', '0000-00-00', '001/2018', '0', '0', '6240', '0', '0', '0', '0', '6240', '0', '1', '', '0', '0', NULL, '0'),
+('2', '12', '0', '1', '1', '2018-05-07', '0000-00-00', '002/2018', '0', '0', '300', '0', '0', '0', '0', '300', '0', '1', '', '0', '0', NULL, '0'),
+('3', '12', '0', '1', '1', '2018-05-07', '0000-00-00', '003/2018', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', '', '0', '0', NULL, '0'),
+('4', '12', '0', '1', '1', '2019-01-21', '0000-00-00', '001/2019', '0', '0', '1250', '0', '0', '0', '0', '1250', '0', '', '0', '0', '0', NULL, '0'),
+('1', '13', '1', '1', '1', '2018-05-10', '2018-05-05', 'auto', '1', '1', '6240', '0', '0', '0', '0', '0', '0', '1', 'std-post', '0', '0', '4', '1'),
+('2', '13', '1', '1', '1', '2018-05-07', '2018-05-07', 'auto', '1', '2', '300', '0', '0', '0', '0', '0', '0', '1', 'std-post', '0', '0', '4', '1'),
+('3', '13', '1', '2', '2', '2018-05-07', '2018-06-17', 'auto', '1', '5', '267.14', '0', '0', '0', '0', '0', '0', '1.123', 'std-post', '1', '0', '1', '1'),
+('4', '13', '1', '1', '1', '2018-05-07', '2018-05-07', 'auto', '1', '7', '0', '0', '0', '0', '0', '0', '0', '1', 'std-post', '0', '0', '4', '1'),
+('5', '13', '1', '1', '1', '2019-01-21', '2019-01-21', 'auto', '1', '8', '1250', '0', '0', '0', '0', '0', '0', '1', 'std-post', '0', '0', '4', '1');
 
 -- Structure of table `0_debtor_trans_details` --
 
@@ -644,7 +657,7 @@ CREATE TABLE `0_debtor_trans_details` (
   `unit_tax` double NOT NULL DEFAULT '0',
   `quantity` double NOT NULL DEFAULT '0',
   `discount_percent` double NOT NULL DEFAULT '0',
-  `standard_cost` double NOT NULL DEFAULT '0',
+  `unit_cost` double NOT NULL DEFAULT '0',
   `qty_done` double NOT NULL DEFAULT '0',
   `src_id` int(11) NOT NULL,
   PRIMARY KEY (`id`),
@@ -687,7 +700,6 @@ CREATE TABLE `0_debtors_master` (
   `credit_status` int(11) NOT NULL DEFAULT '0',
   `payment_terms` int(11) DEFAULT NULL,
   `discount` double NOT NULL DEFAULT '0',
-  `pymt_discount` double NOT NULL DEFAULT '0',
   `credit_limit` float NOT NULL DEFAULT '1000',
   `notes` tinytext NOT NULL,
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
@@ -699,8 +711,8 @@ CREATE TABLE `0_debtors_master` (
 -- Data of table `0_debtors_master` --
 
 INSERT INTO `0_debtors_master` VALUES
-('1', 'Donald Easter LLC', 'Donald Easter', 'N/A', '123456789', 'USD', '1', '0', '0', '1', '4', '0', '0', '1000', '', '0'),
-('2', 'MoneyMaker Ltd.', 'MoneyMaker', 'N/A', '54354333', 'EUR', '1', '1', '0', '1', '1', '0', '0', '1000', '', '0');
+('1', 'Donald Easter LLC', 'Donald Easter', 'N/A', '123456789', 'USD', '1', '0', '0', '1', '4', '0', '1000', '', '0'),
+('2', 'MoneyMaker Ltd.', 'MoneyMaker', 'N/A', '54354333', 'EUR', '1', '1', '0', '1', '1', '0', '1000', '', '0');
 
 -- Structure of table `0_dimensions` --
 
@@ -1068,23 +1080,25 @@ INSERT INTO `0_locations` VALUES
 DROP TABLE IF EXISTS `0_payment_terms`;
 
 CREATE TABLE `0_payment_terms` (
-  `terms_indicator` int(11) NOT NULL AUTO_INCREMENT,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `terms` char(80) NOT NULL DEFAULT '',
-  `days_before_due` smallint(6) NOT NULL DEFAULT '0',
-  `day_in_following_month` smallint(6) NOT NULL DEFAULT '0',
+  `type` tinyint(1) NOT NULL DEFAULT '1'
+  `days` int(11) NOT NULL DEFAULT '0'
+  `early_discount` double NOT NULL DEFAULT '0'
+  `early_days` double NOT NULL DEFAULT '0',
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`terms_indicator`),
+  PRIMARY KEY (`id`),
   UNIQUE KEY `terms` (`terms`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 ;
 
 -- Data of table `0_payment_terms` --
 
 INSERT INTO `0_payment_terms` VALUES
-('1', 'Due 15th Of the Following Month', '0', '17', '0'),
-('2', 'Due By End Of The Following Month', '0', '30', '0'),
-('3', 'Payment due within 10 days', '10', '0', '0'),
-('4', 'Cash Only', '0', '0', '0'),
-('5', 'Prepaid', '-1', '0', '0');
+('1', 'Due 15th Of the Following Month', '4', '17', '0', '0', '0'),
+('2', 'Due By End Of The Following Month', '4', '31', '0', '0', '0'),
+('3', 'Payment due within 10 days', '10', '3', '0', '0', '0', '0'),
+('4', 'Cash Only', '2', '0', '0', '0', '0'),
+('5', 'Prepaid', '1',  '0', '0', '0', '0');
 
 -- Structure of table `0_prices` --
 
@@ -1217,7 +1231,7 @@ CREATE TABLE `0_purch_orders` (
   `comments` tinytext,
   `ord_date` date NOT NULL DEFAULT '0000-00-00',
   `reference` tinytext NOT NULL,
-  `requisition_no` tinytext,
+  `supp_reference` tinytext,
   `into_stock_location` varchar(5) NOT NULL DEFAULT '',
   `delivery_address` tinytext NOT NULL,
   `total` double NOT NULL DEFAULT '0',
@@ -1439,7 +1453,7 @@ CREATE TABLE `0_sales_orders` (
   `comments` tinytext,
   `ord_date` date NOT NULL DEFAULT '0000-00-00',
   `order_type` int(11) NOT NULL DEFAULT '0',
-  `ship_via` int(11) NOT NULL DEFAULT '0',
+  `ship_via` varchar(20) NOT NULL DEFAULT '',
   `delivery_address` tinytext NOT NULL,
   `contact_phone` varchar(30) DEFAULT NULL,
   `contact_email` varchar(100) DEFAULT NULL,
@@ -1457,14 +1471,14 @@ CREATE TABLE `0_sales_orders` (
 -- Data of table `0_sales_orders` --
 
 INSERT INTO `0_sales_orders` VALUES
-('1', '30', '1', '0', '1', '1', 'auto', '', NULL, '2018-05-10', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-05', '4', '6240', '0', '0'),
-('2', '30', '1', '0', '1', '1', 'auto', '', NULL, '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-07', '4', '300', '0', '0'),
-('3', '30', '0', '0', '1', '1', '001/2018', '', NULL, '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-08', '4', '300', '0', '0'),
-('4', '30', '0', '0', '2', '2', '002/2018', '', NULL, '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'MoneyMaker Ltd.', '0', 'DEF', '2018-05-08', '1', '267.14', '0', '0'),
-('5', '30', '1', '0', '2', '2', 'auto', '', NULL, '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'MoneyMaker Ltd.', '0', 'DEF', '2018-06-17', '1', '267.14', '0', '0'),
-('6', '30', '0', '1', '1', '1', '003/2018', '', NULL, '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-08', '4', '450', '0', '0'),
-('7', '30', '1', '0', '1', '1', 'auto', '', 'Recurrent Invoice covers period 04/01/2018 - 04/07/2018.', '2018-05-07', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-07', '4', '0', '0', '0'),
-('8', '30', '1', '0', '1', '1', 'auto', '', NULL, '2019-01-21', '1', '1', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2019-01-21', '4', '1250', '0', '0');
+('1', '30', '1', '0', '1', '1', 'auto', '', NULL, '2018-05-10', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-05', '4', '6240', '0', '0'),
+('2', '30', '1', '0', '1', '1', 'auto', '', NULL, '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-07', '4', '300', '0', '0'),
+('3', '30', '0', '0', '1', '1', '001/2018', '', NULL, '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-08', '4', '300', '0', '0'),
+('4', '30', '0', '0', '2', '2', '002/2018', '', NULL, '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'MoneyMaker Ltd.', '0', 'DEF', '2018-05-08', '1', '267.14', '0', '0'),
+('5', '30', '1', '0', '2', '2', 'auto', '', NULL, '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'MoneyMaker Ltd.', '0', 'DEF', '2018-06-17', '1', '267.14', '0', '0'),
+('6', '30', '0', '1', '1', '1', '003/2018', '', NULL, '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-08', '3', '450', '0', '0'),
+('7', '30', '1', '0', '1', '1', 'auto', '', 'Recurrent Invoice covers period 04/01/2018 - 04/07/2018.', '2018-05-07', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2018-05-07', '4', '0', '0', '0'),
+('8', '30', '1', '0', '1', '1', 'auto', '', NULL, '2019-01-21', '1', 'post-std', 'N/A', NULL, NULL, 'Donald Easter LLC', '0', 'DEF', '2019-01-21', '4', '1250', '0', '0');
 
 -- Structure of table `0_sales_pos` --
 
@@ -1580,21 +1594,6 @@ CREATE TABLE `0_shippers` (
 INSERT INTO `0_shippers` VALUES
 ('1', 'Default', '', '', '', '', '0');
 
--- Structure of table `0_sql_trail` --
-
-DROP TABLE IF EXISTS `0_sql_trail`;
-
-CREATE TABLE `0_sql_trail` (
-  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-  `sql` text NOT NULL,
-  `result` tinyint(1) NOT NULL,
-  `msg` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB ;
-
--- Data of table `0_sql_trail` --
-
-
 -- Structure of table `0_stock_category` --
 
 DROP TABLE IF EXISTS `0_stock_category`;
@@ -1615,6 +1614,7 @@ CREATE TABLE `0_stock_category` (
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
   `dflt_no_sale` tinyint(1) NOT NULL DEFAULT '0',
   `dflt_no_purchase` tinyint(1) NOT NULL DEFAULT '0',
+  `vat_category` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`category_id`),
   UNIQUE KEY `description` (`description`)
 ) ENGINE=InnoDB AUTO_INCREMENT=5 ;
@@ -1622,10 +1622,11 @@ CREATE TABLE `0_stock_category` (
 -- Data of table `0_stock_category` --
 
 INSERT INTO `0_stock_category` VALUES
-('1', 'Components', '1', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('2', 'Charges', '1', 'each', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('3', 'Systems', '1', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('4', 'Services', '1', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0');
+('1', 'Components', '1', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('2', 'Charges', '1', 'each', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('3', 'Systems', '1', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('4', 'Services', '1', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('5', 'Shipping', '1', 'each', 'T', '4430', '5010', '', '', '', '0', '0', '0', '1', '0', '0');
 
 -- Structure of table `0_stock_fa_class` --
 
@@ -1676,18 +1677,21 @@ CREATE TABLE `0_stock_master` (
   `depreciation_start` date NOT NULL DEFAULT '0000-00-00',
   `depreciation_date` date NOT NULL DEFAULT '0000-00-00',
   `fa_class_id` varchar(20) NOT NULL DEFAULT '',
+  `vat_category` tinyint(1) NOT NULL DEFAULT '0',
+  `shipper_id` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`stock_id`)
 ) ENGINE=InnoDB ;
 
 -- Data of table `0_stock_master` --
 
 INSERT INTO `0_stock_master` VALUES
-('101', '1', '1', 'iPad Air 2 16GB', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '200', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', ''),
-('102', '1', '1', 'iPhone 6 64GB', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '150', '150', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', ''),
-('103', '1', '1', 'iPhone Cover Case', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '10', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', ''),
-('201', '3', '1', 'AP Surf Set', '', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '360', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', ''),
-('202', '4', '1', 'Maintenance', '', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', 'S', '0', '1', '0000-00-00', '0000-00-00', ''),
-('301', '4', '1', 'Support', '', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '');
+('101', '1', '1', 'iPad Air 2 16GB', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '200', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('102', '1', '1', 'iPhone 6 64GB', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '150', '150', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('103', '1', '1', 'iPhone Cover Case', '', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '10', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('201', '3', '1', 'AP Surf Set', '', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '360', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('202', '4', '1', 'Maintenance', '', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('301', '4', '1', 'Support', '', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0'),
+('post-std', '5', '1', 'Standard post package', '', 'each', 'T', '4430', '5010', '', '', '', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0');
 
 -- Structure of table `0_stock_moves` --
 
@@ -1703,7 +1707,7 @@ CREATE TABLE `0_stock_moves` (
   `price` double NOT NULL DEFAULT '0',
   `reference` char(40) NOT NULL DEFAULT '',
   `qty` double NOT NULL DEFAULT '1',
-  `standard_cost` double NOT NULL DEFAULT '0',
+  `unit_cost` double NOT NULL DEFAULT '0',
   PRIMARY KEY (`trans_id`),
   KEY `type` (`type`,`trans_no`),
   KEY `Move` (`stock_id`,`loc_code`,`tran_date`)
@@ -1738,6 +1742,7 @@ CREATE TABLE `0_supp_allocations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `person_id` int(11) DEFAULT NULL,
   `amt` double unsigned DEFAULT NULL,
+  `discount` double unsigned DEFAULT '0',
   `date_alloc` date NOT NULL DEFAULT '0000-00-00',
   `trans_no_from` int(11) DEFAULT NULL,
   `trans_type_from` int(11) DEFAULT NULL,
@@ -1915,7 +1920,7 @@ INSERT INTO `0_sys_prefs` VALUES
 ('default_inv_sales_act', 'glsetup.items', 'varchar', 15, '4010'),
 ('default_wip_act', 'glsetup.items', 'varchar', 15, '1530'),
 ('default_workorder_required', 'glsetup.manuf', 'int', 11, '20'),
-('version_id', 'system', 'varchar', 11, '2.4.1'),
+('version_id', 'system', 'varchar', 11, '2.5.0'),
 ('auto_curr_reval', 'setup.company', 'smallint', 6, '1'),
 ('grn_clearing_act', 'glsetup.purchase', 'varchar', 15, '1550'),
 ('bcc_email', 'setup.company', 'varchar', 100, ''),
@@ -1974,14 +1979,13 @@ DROP TABLE IF EXISTS `0_tax_group_items`;
 CREATE TABLE `0_tax_group_items` (
   `tax_group_id` int(11) NOT NULL DEFAULT '0',
   `tax_type_id` int(11) NOT NULL DEFAULT '0',
-  `tax_shipping` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`tax_group_id`,`tax_type_id`)
 ) ENGINE=InnoDB ;
 
 -- Data of table `0_tax_group_items` --
 
 INSERT INTO `0_tax_group_items` VALUES
-('1', '1', '1');
+('1', '1');
 
 -- Structure of table `0_tax_groups` --
 
@@ -1990,6 +1994,7 @@ DROP TABLE IF EXISTS `0_tax_groups`;
 CREATE TABLE `0_tax_groups` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(60) NOT NULL DEFAULT '',
+  `tax_area` tinyint(1) NOT NULL DEFAULT '0',
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
@@ -1998,8 +2003,8 @@ CREATE TABLE `0_tax_groups` (
 -- Data of table `0_tax_groups` --
 
 INSERT INTO `0_tax_groups` VALUES
-('1', 'Tax', '0'),
-('2', 'Tax Exempt', '0');
+('1', 'Tax', '0', '0'),
+('2', 'Export/Import', '1', '0');
 
 -- Structure of table `0_tax_types` --
 
@@ -2037,6 +2042,8 @@ CREATE TABLE `0_trans_tax_details` (
   `amount` double NOT NULL DEFAULT '0',
   `memo` tinytext,
   `reg_type` tinyint(1) DEFAULT NULL,
+  `vat_category` int(11) NOT NULL DEFAULT '0',
+  `tax_group_id` tinyint(2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `Type_and_Number` (`trans_type`,`trans_no`),
   KEY `tran_date` (`tran_date`)
@@ -2045,16 +2052,16 @@ CREATE TABLE `0_trans_tax_details` (
 -- Data of table `0_trans_tax_details` --
 
 INSERT INTO `0_trans_tax_details` VALUES
-('1', '13', '1', '2018-05-10', '1', '5', '1', '1', '5942.86', '297.14', 'auto', NULL),
-('2', '10', '1', '2018-05-10', '1', '5', '1', '1', '5942.86', '297.14', '001/2018', '0'),
-('3', '20', '1', '2018-05-05', '1', '5', '1', '0', '3000', '150', 'rr4', '1'),
-('4', '13', '2', '2018-05-07', '1', '5', '1', '1', '285.71', '14.29', 'auto', NULL),
-('5', '10', '2', '2018-05-07', '1', '5', '1', '1', '285.71', '14.29', '002/2018', '0'),
-('6', '13', '3', '2018-05-07', '0', '0', '1.123', '1', '267.14', '0', 'auto', NULL),
-('7', '10', '3', '2018-05-07', '0', '0', '1.123', '1', '267.14', '0', '003/2018', '0'),
-('8', '13', '5', '2019-01-21', '1', '5', '1', '1', '1190.48', '59.52', 'auto', NULL),
-('9', '10', '5', '2019-01-21', '1', '5', '1', '1', '1190.48', '59.52', '001/2019', '0'),
-('10', '20', '2', '2019-01-21', '1', '5', '1', '0', '900', '45', 'asd5', '1');
+('1', '13', '1', '2018-05-10', '1', '5', '1', '1', '5942.86', '297.14', 'auto', NULL, '0', '1'),
+('2', '10', '1', '2018-05-10', '1', '5', '1', '1', '5942.86', '297.14', '001/2018', '0', '0', '1'),
+('3', '20', '1', '2018-05-05', '1', '5', '1', '0', '3000', '150', 'rr4', '1', '0', '1'),
+('4', '13', '2', '2018-05-07', '1', '5', '1', '1', '285.71', '14.29', 'auto', NULL, '0', '1'),
+('5', '10', '2', '2018-05-07', '1', '5', '1', '1', '285.71', '14.29', '002/2018', '0', '0', '1'),
+('6', '13', '3', '2018-05-07', '0', '0', '1.123', '1', '267.14', '0', 'auto', NULL, '0', '1'),
+('7', '10', '3', '2018-05-07', '0', '0', '1.123', '1', '267.14', '0', '003/2018', '0', '0', '1'),
+('8', '13', '5', '2019-01-21', '1', '5', '1', '1', '1190.48', '59.52', 'auto', NULL, '0', '1'),
+('9', '10', '5', '2019-01-21', '1', '5', '1', '1', '1190.48', '59.52', '001/2019', '0', '0', '1'),
+('10', '20', '2', '2019-01-21', '1', '5', '1', '0', '900', '45', 'asd5', '1', '0', '1');
 
 -- Structure of table `0_useronline` --
 
@@ -2269,14 +2276,13 @@ CREATE TABLE `0_workorders` (
   `units_issued` double NOT NULL DEFAULT '0',
   `closed` tinyint(1) NOT NULL DEFAULT '0',
   `released` tinyint(1) NOT NULL DEFAULT '0',
-  `additional_costs` double NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `wo_ref` (`wo_ref`)
+  KEY `wo_ref` (`wo_ref`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 ;
 
 -- Data of table `0_workorders` --
 
 INSERT INTO `0_workorders` VALUES
-('1', '001/2018', 'DEF', '2', '201', '2018-05-05', '0', '2018-05-05', '2018-05-05', '2', '1', '1', '0'),
-('2', '002/2018', 'DEF', '5', '201', '2018-05-07', '2', '2018-05-27', '2018-05-07', '0', '0', '1', '0'),
-('3', '003/2018', 'DEF', '5', '201', '2018-05-07', '2', '2018-05-27', '0000-00-00', '0', '0', '0', '0');
+('1', '001/2018', 'DEF', '2', '201', '2018-05-05', '0', '2018-05-05', '2018-05-05', '2', '1', '1'),
+('2', '002/2018', 'DEF', '5', '201', '2018-05-07', '2', '2018-05-27', '2018-05-07', '0', '0', '1'),
+('3', '003/2018', 'DEF', '5', '201', '2018-05-07', '2', '2018-05-27', '0000-00-00', '0', '0', '0');

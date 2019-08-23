@@ -1,11 +1,11 @@
 -- MySQL dump of database 'en_US-new' on host 'localhost'
 -- Backup Date and Time: 2019-01-21 11:16
--- Built by FrontAccounting 2.4.6
+-- Built by FrontAccounting 2.5.0
 -- http://frontaccounting.com
 -- Company: Training Co.
 -- User: Administrator
 
--- Compatibility: 2.4.1
+-- Compatibility: 2.5.0
 
 
 SET NAMES latin1;
@@ -111,6 +111,7 @@ CREATE TABLE `0_bank_trans` (
   `ref` varchar(40) DEFAULT NULL,
   `trans_date` date NOT NULL DEFAULT '0000-00-00',
   `amount` double DEFAULT NULL,
+  `charge` double DEFAULT NULL,
   `dimension_id` int(11) NOT NULL DEFAULT '0',
   `dimension2_id` int(11) NOT NULL DEFAULT '0',
   `person_type_id` int(11) NOT NULL DEFAULT '0',
@@ -450,6 +451,7 @@ CREATE TABLE `0_cust_allocations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `person_id` int(11) DEFAULT NULL,
   `amt` double unsigned DEFAULT NULL,
+  `discount` double unsigned DEFAULT '0',
   `date_alloc` date NOT NULL DEFAULT '0000-00-00',
   `trans_no_from` int(11) DEFAULT NULL,
   `trans_type_from` int(11) DEFAULT NULL,
@@ -481,7 +483,7 @@ CREATE TABLE `0_cust_branch` (
   `sales_discount_account` varchar(15) NOT NULL DEFAULT '',
   `receivables_account` varchar(15) NOT NULL DEFAULT '',
   `payment_discount_account` varchar(15) NOT NULL DEFAULT '',
-  `default_ship_via` int(11) NOT NULL DEFAULT '1',
+  `default_ship_via` varchar(20) NOT NULL DEFAULT '',
   `br_post_address` tinytext NOT NULL,
   `group_no` int(11) NOT NULL DEFAULT '0',
   `notes` tinytext NOT NULL,
@@ -493,6 +495,17 @@ CREATE TABLE `0_cust_branch` (
 ) ENGINE=InnoDB;
 
 -- Data of table `0_cust_branch` --
+
+DROP TABLE IF EXISTS `0_sql_trail`;
+CREATE TABLE `0_db_trail` (
+		`id` int(11) NOT NULL AUTO_INCREMENT,
+		`stamp` timestamp DEFAULT CURRENT_TIMESTAMP,
+		`user` tinyint(3) unsigned NOT NULL DEFAULT '0',
+		`msg`  varchar(255) DEFAULT '',
+		`entry`  varchar(255) DEFAULT '',
+		`data` text DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE=MyISAM;
 
 -- Structure of table `0_debtor_trans` --
 
@@ -517,7 +530,7 @@ CREATE TABLE `0_debtor_trans` (
   `alloc` double NOT NULL DEFAULT '0',
   `prep_amount` double NOT NULL DEFAULT '0',
   `rate` double NOT NULL DEFAULT '1',
-  `ship_via` int(11) DEFAULT NULL,
+  `ship_via`  varchar(20) NOT NULL DEFAULT '',
   `dimension_id` int(11) NOT NULL DEFAULT '0',
   `dimension2_id` int(11) NOT NULL DEFAULT '0',
   `payment_terms` int(11) DEFAULT NULL,
@@ -544,7 +557,7 @@ CREATE TABLE `0_debtor_trans_details` (
   `unit_tax` double NOT NULL DEFAULT '0',
   `quantity` double NOT NULL DEFAULT '0',
   `discount_percent` double NOT NULL DEFAULT '0',
-  `standard_cost` double NOT NULL DEFAULT '0',
+  `unit_cost` double NOT NULL DEFAULT '0',
   `qty_done` double NOT NULL DEFAULT '0',
   `src_id` int(11) NOT NULL,
   PRIMARY KEY (`id`),
@@ -571,7 +584,6 @@ CREATE TABLE `0_debtors_master` (
   `credit_status` int(11) NOT NULL DEFAULT '0',
   `payment_terms` int(11) DEFAULT NULL,
   `discount` double NOT NULL DEFAULT '0',
-  `pymt_discount` double NOT NULL DEFAULT '0',
   `credit_limit` float NOT NULL DEFAULT '1000',
   `notes` tinytext NOT NULL,
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
@@ -852,23 +864,25 @@ INSERT INTO `0_locations` VALUES
 DROP TABLE IF EXISTS `0_payment_terms`;
 
 CREATE TABLE `0_payment_terms` (
-  `terms_indicator` int(11) NOT NULL AUTO_INCREMENT,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `terms` char(80) NOT NULL DEFAULT '',
-  `days_before_due` smallint(6) NOT NULL DEFAULT '0',
-  `day_in_following_month` smallint(6) NOT NULL DEFAULT '0',
+  `type` tinyint(1) NOT NULL DEFAULT '1'
+  `days` int(11) NOT NULL DEFAULT '0'
+  `early_discount` double NOT NULL DEFAULT '0'
+  `early_days` double NOT NULL DEFAULT '0',
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`terms_indicator`),
+  PRIMARY KEY (`id`),
   UNIQUE KEY `terms` (`terms`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 ;
 
 -- Data of table `0_payment_terms` --
 
 INSERT INTO `0_payment_terms` VALUES
-('1', 'Due 15th Of the Following Month', '0', '17', '0'),
-('2', 'Due By End Of The Following Month', '0', '30', '0'),
-('3', 'Payment due within 10 days', '10', '0', '0'),
-('4', 'Cash Only', '0', '0', '0'),
-('5', 'Prepaid', '-1', '0', '0');
+('1', 'Due 15th Of the Following Month', '4', '17', '0', '0', '0'),
+('2', 'Due By End Of The Following Month', '4', '31', '0', '0', '0'),
+('3', 'Payment due within 10 days', '3', '10', '0', '0', '0'),
+('4', 'Cash Only', '2', '0', '0', '0', '0'),
+('5', 'Prepaid', '1', '0', '0', '0', '0');
 
 -- Structure of table `0_prices` --
 
@@ -984,7 +998,7 @@ CREATE TABLE `0_purch_orders` (
   `comments` tinytext,
   `ord_date` date NOT NULL DEFAULT '0000-00-00',
   `reference` tinytext NOT NULL,
-  `requisition_no` tinytext,
+  `supp_reference` tinytext,
   `into_stock_location` varchar(5) NOT NULL DEFAULT '',
   `delivery_address` tinytext NOT NULL,
   `total` double NOT NULL DEFAULT '0',
@@ -1162,7 +1176,7 @@ CREATE TABLE `0_sales_orders` (
   `comments` tinytext,
   `ord_date` date NOT NULL DEFAULT '0000-00-00',
   `order_type` int(11) NOT NULL DEFAULT '0',
-  `ship_via` int(11) NOT NULL DEFAULT '0',
+  `ship_via` varchar(20) NOT NULL DEFAULT '',
   `delivery_address` tinytext NOT NULL,
   `contact_phone` varchar(30) DEFAULT NULL,
   `contact_email` varchar(100) DEFAULT NULL,
@@ -1293,20 +1307,6 @@ CREATE TABLE `0_shippers` (
 INSERT INTO `0_shippers` VALUES
 ('1', 'Default', '', '', '', '', '0');
 
--- Structure of table `0_sql_trail` --
-
-DROP TABLE IF EXISTS `0_sql_trail`;
-
-CREATE TABLE `0_sql_trail` (
-  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
-  `sql` text NOT NULL,
-  `result` tinyint(1) NOT NULL,
-  `msg` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB ;
-
--- Data of table `0_sql_trail` --
-
 -- Structure of table `0_stock_category` --
 
 DROP TABLE IF EXISTS `0_stock_category`;
@@ -1327,6 +1327,7 @@ CREATE TABLE `0_stock_category` (
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
   `dflt_no_sale` tinyint(1) NOT NULL DEFAULT '0',
   `dflt_no_purchase` tinyint(1) NOT NULL DEFAULT '0',
+  `vat_category` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`category_id`),
   UNIQUE KEY `description` (`description`)
 ) ENGINE=InnoDB AUTO_INCREMENT=5 ;
@@ -1334,10 +1335,11 @@ CREATE TABLE `0_stock_category` (
 -- Data of table `0_stock_category` --
 
 INSERT INTO `0_stock_category` VALUES
-('1', 'Components', '1', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('2', 'Charges', '1', 'each', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('3', 'Systems', '1', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0'),
-('4', 'Services', '1', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0');
+('1', 'Components', '1', 'each', 'B', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('2', 'Charges', '1', 'each', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('3', 'Systems', '1', 'each', 'M', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('4', 'Services', '1', 'hr', 'D', '4010', '5010', '1510', '5040', '1530', '0', '0', '0', '0', '0', '0'),
+('5', 'Shipping', '1', 'each', 'T', '4430', '5010', '', '', '', '0', '0', '0', '1', '0', '0');
 
 -- Structure of table `0_stock_fa_class` --
 
@@ -1388,11 +1390,14 @@ CREATE TABLE `0_stock_master` (
   `depreciation_start` date NOT NULL DEFAULT '0000-00-00',
   `depreciation_date` date NOT NULL DEFAULT '0000-00-00',
   `fa_class_id` varchar(20) NOT NULL DEFAULT '',
+  `vat_category` tinyint(1) NOT NULL DEFAULT '0',
+  `shipper_id` int(11) NOT NULL DEFAULT '0',
   PRIMARY KEY (`stock_id`)
 ) ENGINE=InnoDB;
 
 -- Data of table `0_stock_master` --
-
+INSERT INTO `0_stock_master` VALUES
+('post-std', '5', '1', 'Standard post package', '', 'each', 'T', '4430', '5010', '', '', '', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', 'S', '0', '1', '0000-00-00', '0000-00-00', '', '0', '0');
 -- Structure of table `0_stock_moves` --
 
 DROP TABLE IF EXISTS `0_stock_moves`;
@@ -1407,7 +1412,7 @@ CREATE TABLE `0_stock_moves` (
   `price` double NOT NULL DEFAULT '0',
   `reference` char(40) NOT NULL DEFAULT '',
   `qty` double NOT NULL DEFAULT '1',
-  `standard_cost` double NOT NULL DEFAULT '0',
+  `unit_cost` double NOT NULL DEFAULT '0',
   PRIMARY KEY (`trans_id`),
   KEY `type` (`type`,`trans_no`),
   KEY `Move` (`stock_id`,`loc_code`,`tran_date`)
@@ -1423,6 +1428,7 @@ CREATE TABLE `0_supp_allocations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `person_id` int(11) DEFAULT NULL,
   `amt` double unsigned DEFAULT NULL,
+  `discount` double unsigned DEFAULT '0',
   `date_alloc` date NOT NULL DEFAULT '0000-00-00',
   `trans_no_from` int(11) DEFAULT NULL,
   `trans_type_from` int(11) DEFAULT NULL,
@@ -1588,7 +1594,7 @@ INSERT INTO `0_sys_prefs` VALUES
 ('default_inv_sales_act', 'glsetup.items', 'varchar', 15, '4010'),
 ('default_wip_act', 'glsetup.items', 'varchar', 15, '1530'),
 ('default_workorder_required', 'glsetup.manuf', 'int', 11, '20'),
-('version_id', 'system', 'varchar', 11, '2.4.1'),
+('version_id', 'system', 'varchar', 11, '2.5.0'),
 ('auto_curr_reval', 'setup.company', 'smallint', 6, '1'),
 ('grn_clearing_act', 'glsetup.purchase', 'varchar', 15, '1550'),
 ('bcc_email', 'setup.company', 'varchar', 100, ''),
@@ -1647,14 +1653,13 @@ DROP TABLE IF EXISTS `0_tax_group_items`;
 CREATE TABLE `0_tax_group_items` (
   `tax_group_id` int(11) NOT NULL DEFAULT '0',
   `tax_type_id` int(11) NOT NULL DEFAULT '0',
-  `tax_shipping` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`tax_group_id`,`tax_type_id`)
 ) ENGINE=InnoDB ;
 
 -- Data of table `0_tax_group_items` --
 
 INSERT INTO `0_tax_group_items` VALUES
-('1', '1', '1');
+('1', '1');
 
 -- Structure of table `0_tax_groups` --
 
@@ -1663,6 +1668,7 @@ DROP TABLE IF EXISTS `0_tax_groups`;
 CREATE TABLE `0_tax_groups` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(60) NOT NULL DEFAULT '',
+  `tax_area` tinyint(1) NOT NULL DEFAULT '0',
   `inactive` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
@@ -1671,8 +1677,8 @@ CREATE TABLE `0_tax_groups` (
 -- Data of table `0_tax_groups` --
 
 INSERT INTO `0_tax_groups` VALUES
-('1', 'Tax', '0'),
-('2', 'Tax Exempt', '0');
+('1', 'Tax', '0', '0'),
+('2', 'Export/Import', '1', '0');
 
 -- Structure of table `0_tax_types` --
 
@@ -1710,6 +1716,8 @@ CREATE TABLE `0_trans_tax_details` (
   `amount` double NOT NULL DEFAULT '0',
   `memo` tinytext,
   `reg_type` tinyint(1) DEFAULT NULL,
+  `vat_category` int(11) NOT NULL DEFAULT '0',
+  `tax_group_id` tinyint(2) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `Type_and_Number` (`trans_type`,`trans_no`),
   KEY `tran_date` (`tran_date`)
@@ -1917,9 +1925,8 @@ CREATE TABLE `0_workorders` (
   `units_issued` double NOT NULL DEFAULT '0',
   `closed` tinyint(1) NOT NULL DEFAULT '0',
   `released` tinyint(1) NOT NULL DEFAULT '0',
-  `additional_costs` double NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `wo_ref` (`wo_ref`)
+  KEY `wo_ref` (`wo_ref`)
 ) ENGINE=InnoDB;
 
 -- Data of table `0_workorders` --
