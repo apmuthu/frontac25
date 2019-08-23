@@ -14,8 +14,9 @@ function update_item($stock_id, $description, $long_description, $category_id,
 	$cogs_account, 	$adjustment_account, $wip_account, $dimension_id, 
 	$dimension2_id, $no_sale, $editable, $no_purchase,
 	$depreciation_method = 'D', $depreciation_rate=100, $depreciation_factor=1,
-	$depreciation_start=null, $fa_class_id=null)
+	$depreciation_start=null, $fa_class_id=null, $vat_category='', $shipper_id=0)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "UPDATE ".TB_PREF."stock_master SET long_description=".db_escape($long_description).",
 		description=".db_escape($description).",
 		category_id=".db_escape($category_id).",
@@ -33,13 +34,17 @@ function update_item($stock_id, $description, $long_description, $category_id,
 		depreciation_method=".db_escape($depreciation_method).",
 		depreciation_rate=".db_escape($depreciation_rate).",
 		depreciation_factor=".db_escape($depreciation_factor).",
-		fa_class_id=".db_escape($fa_class_id);
+		fa_class_id=".db_escape($fa_class_id).",
+		shipper_id=".db_escape($shipper_id);
 
 	if ($units != '')
 		$sql .= ", units=".db_escape($units);
 
 	if ($mb_flag != '')
 		$sql .= ", mb_flag=".db_escape($mb_flag);
+
+	if ($vat_category != '')
+		$sql .= ", vat_category=".db_escape($vat_category);
 
 	if (isset($depreciation_start)) {
 		$sql .= ", depreciation_start='".date2sql($depreciation_start)."'"
@@ -51,6 +56,7 @@ function update_item($stock_id, $description, $long_description, $category_id,
 	db_query($sql, "The item could not be updated");
 
 	update_item_code(-1, $stock_id, $stock_id, $description, $category_id, 1, 0);
+	commit_transaction();
 }
 
 function add_item($stock_id, $description, $long_description, $category_id, 
@@ -58,14 +64,15 @@ function add_item($stock_id, $description, $long_description, $category_id,
 	$cogs_account, $adjustment_account,	$wip_account, $dimension_id, 
 	$dimension2_id, $no_sale, $editable, $no_purchase,
 	$depreciation_method='D', $depreciation_rate=100,  $depreciation_factor=1, $depreciation_start=null,
-	$fa_class_id=null)
+	$fa_class_id=null, $vat_category=0, $shipper_id=0)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "INSERT INTO ".TB_PREF."stock_master (stock_id, description, long_description, category_id,
 		tax_type_id, units, mb_flag, sales_account, inventory_account, cogs_account,
-		adjustment_account, wip_account, dimension_id, dimension2_id, no_sale, no_purchase, editable,
+		adjustment_account, wip_account, dimension_id, dimension2_id, no_sale, no_purchase, editable, vat_category,
 		depreciation_method, depreciation_rate, depreciation_factor"
 		.(isset($depreciation_start) ? ", depreciation_start, depreciation_date, fa_class_id" : "")
-		.") VALUES (".db_escape($stock_id).", ".db_escape($description).", ".db_escape($long_description).",
+		.",shipper_id) VALUES (".db_escape($stock_id).", ".db_escape($description).", ".db_escape($long_description).",
 		".db_escape($category_id).", ".db_escape($tax_type_id).", "
 		.db_escape($units).", ".db_escape($mb_flag).",
 		".db_escape($sales_account).", ".db_escape($inventory_account)
@@ -74,10 +81,10 @@ function add_item($stock_id, $description, $long_description, $category_id,
 		.db_escape($dimension_id).", ".db_escape($dimension2_id).","
 		.db_escape($no_sale).","
 		.db_escape($no_purchase).","
-		.db_escape($editable).","
+		.db_escape($editable).",".db_escape($vat_category).","
 		.db_escape($depreciation_method).",".db_escape($depreciation_rate).",".db_escape($depreciation_factor)
 		.(isset($depreciation_start) ? ",'".date2sql($depreciation_start)."','".date2sql($depreciation_start)."',".db_escape($fa_class_id) : "")
-		.")";
+		.",".db_escape($shipper_id).")";
 
 	db_query($sql, "The item could not be added");
 
@@ -88,10 +95,12 @@ function add_item($stock_id, $description, $long_description, $category_id,
 	db_query($sql, "The item locstock could not be added");
 
 	add_item_code($stock_id, $stock_id, $description, $category_id, 1, 0);
+	commit_transaction();
 }
 
 function delete_item($stock_id)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql="DELETE FROM ".TB_PREF."stock_master WHERE stock_id=".db_escape($stock_id);
 	db_query($sql, "could not delete stock item");
 
@@ -112,6 +121,7 @@ function delete_item($stock_id)
 	db_query($sql, "could not delete stock item bom");
 
 	delete_item_kit($stock_id);
+	commit_transaction();
 }
 
 function get_item($stock_id)
@@ -146,7 +156,10 @@ function item_in_foreign_codes($stock_id)
 	 _('Cannot delete this item because there are existing sales order items for it.'),
 	"SELECT COUNT(*) FROM "
 		.TB_PREF."purch_order_details WHERE item_code=".db_escape($stock_id)=>
-	 _('Cannot delete this item because there are existing purchase order items for it.')
+	 _('Cannot delete this item because there are existing purchase order items for it.'),
+	"SELECT COUNT(*) FROM "
+		.TB_PREF."sales_orders WHERE ship_via=".db_escape($stock_id)=>
+	 _('Cannot delete this item because there are existing sales transactions for it.'),
 	);
 
 	$msg = '';
@@ -227,4 +240,3 @@ function get_items_search($description, $type)
 
 	return db_query($sql, "Failed in retreiving item list.");
 }
-

@@ -11,13 +11,13 @@
 ***********************************************************************/
 //--------------------------------------------------------------------------------
 
-// Base function for adding a GL transaction
+// Base function for adding a GL transaction line
 // $date_ is display date (non-sql)
 // $amount is in $currency currency
 // if $currency is not set, then defaults to no conversion
 
 function add_gl_trans($type, $trans_id, $date_, $account, $dimension, $dimension2, $memo_,
-	$amount, $currency=null, $person_type_id=null, $person_id=null,	$err_msg="", $rate=0)
+	$amount, $currency=null, $person_type_id=null, $person_id=null, $rate=0)
 {
 	global $SysPrefs;
 
@@ -63,10 +63,7 @@ function add_gl_trans($type, $trans_id, $date_, $account, $dimension, $dimension
 
 	$sql .= ") ";
 
-	if ($err_msg == "")
-		$err_msg = "The GL transaction could not be inserted";
-
-	db_query($sql, $err_msg);
+	db_query($sql, "The GL transaction could not be inserted");
 	return $amount_in_home_currency;
 }
 
@@ -77,12 +74,12 @@ function add_gl_trans($type, $trans_id, $date_, $account, $dimension, $dimension
 // $amount is in HOME currency
 
 function add_gl_trans_std_cost($type, $trans_id, $date_, $account, $dimension, $dimension2,
-	$memo_,	$amount, $person_type_id=null, $person_id=null, $err_msg="")
+	$memo_,	$amount, $person_type_id=null, $person_id=null)
 {
 
 	if ($amount != 0)
 		return add_gl_trans($type, $trans_id, $date_, $account, $dimension, $dimension2, $memo_,
-			$amount, null, $person_type_id, $person_id, $err_msg);
+			$amount, null, $person_type_id, $person_id);
 	else
 		return 0;
 }
@@ -96,7 +93,7 @@ function add_gl_balance($type, $trans_id, $date_, $amount, $person_type_id=null,
 	{
 		error_log(sprintf( _("Rounding error %s encountered for trans_type:%s,trans_no:%s"), $amount, $type, $trans_id));
 		return add_gl_trans($type, $trans_id, $date_, get_company_pref('exchange_diff_act'), 0, 0, "",
-			$amount, null, $person_type_id, $person_id, "The balanced GL transaction could not be inserted");
+			$amount, null, $person_type_id, $person_id);
 	} else
 		return 0;
 }
@@ -381,6 +378,8 @@ function exists_gl_budget($date_, $account, $dimension, $dimension2)
 
 function add_update_gl_budget_trans($date_, $account, $dimension, $dimension2, $amount)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
+
 	$date = date2sql($date_);
 
 	if (exists_gl_budget($date, $account, $dimension, $dimension2))
@@ -396,10 +395,14 @@ function add_update_gl_budget_trans($date_, $account, $dimension, $dimension2, $
 			.db_escape($dimension2).", ".db_escape($amount).", '')";
 
 	db_query($sql, "The GL budget transaction could not be saved");
+
+	commit_transaction();
 }
 
 function delete_gl_budget_trans($date_, $account, $dimension, $dimension2)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
+
 	$date = date2sql($date_);
 
 	$sql = "DELETE FROM ".TB_PREF."budget_trans WHERE account=".db_escape($account)
@@ -407,6 +410,8 @@ function delete_gl_budget_trans($date_, $account, $dimension, $dimension2)
 	." AND dimension2_id=".db_escape($dimension2)
 	." AND tran_date='$date'";
 	db_query($sql, "The GL budget transaction could not be deleted");
+
+	commit_transaction();
 }
 
 function get_only_budget_trans_from_to($from_date, $to_date, $account, $dimension=0, $dimension2=0)
@@ -429,7 +434,7 @@ function get_only_budget_trans_from_to($from_date, $to_date, $account, $dimensio
 //--------------------------------------------------------------------------------
 //	Stores journal/bank transaction tax details if applicable
 //
-function add_gl_tax_details($gl_code, $trans_type, $trans_no, $amount, $ex_rate, $date, $memo, $included=0, $net_amount = null)
+function add_gl_tax_details($gl_code, $trans_type, $trans_no, $amount, $ex_rate, $date, $memo, $included=0, $net_amount = null, $tax_group_id=null)
 {
 	$tax_type = is_tax_account($gl_code);
 	if(!$tax_type) return;	// $gl_code is not tax account
@@ -447,7 +452,7 @@ function add_gl_tax_details($gl_code, $trans_type, $trans_no, $amount, $ex_rate,
 		}
 	}
 	add_trans_tax_details($trans_type, $trans_no, $tax['id'], $tax['rate'], $included, 
-		$amount, $net_amount, $ex_rate, $date, $memo, null);
+		$amount, $net_amount, $ex_rate, $date, $memo, null, $tax_group_id);
 
 }
 
@@ -457,7 +462,7 @@ function add_gl_tax_details($gl_code, $trans_type, $trans_no, $amount, $ex_rate,
 //	actual tax type rate.
 //
 function add_trans_tax_details($trans_type, $trans_no, $tax_id, $rate, $included,
-	$amount, $net_amount, $ex_rate, $tran_date, $memo, $reg_type=null)
+	$amount, $net_amount, $ex_rate, $tran_date, $memo, $reg_type=null, $tax_group_id=null, $vat_category=0)
 {
 	// guess tax register if not set
 	if (!isset($reg_type))
@@ -466,14 +471,18 @@ function add_trans_tax_details($trans_type, $trans_no, $tax_id, $rate, $included
 
 	$sql = "INSERT INTO ".TB_PREF."trans_tax_details 
 		(trans_type, trans_no, tran_date, tax_type_id, rate, ex_rate,
-			included_in_price, net_amount, amount, memo, reg_type)
+			included_in_price, net_amount, amount, memo, reg_type, tax_group_id, vat_category)
 		VALUES (".db_escape($trans_type)."," . db_escape($trans_no).",'"
 				.date2sql($tran_date)."',"
 				.(int)($tax_id).","
 				.(float)($rate).","
 				.(float)($ex_rate).",".($included ? 1:0).","
 				.db_escape($net_amount).","
-				.db_escape($amount).",".db_escape($memo).",".db_escape($reg_type, true).")";
+				.db_escape($amount).","
+				.db_escape($memo).","
+				.db_escape($reg_type, true).","
+				.db_escape($tax_group_id).","
+				.db_escape($vat_category).")";
 
 	db_query($sql, "Cannot save trans tax details");
 
@@ -482,13 +491,15 @@ function add_trans_tax_details($trans_type, $trans_no, $tax_id, $rate, $included
 
 function get_trans_tax_details($trans_type, $trans_no)
 {
-    $sql = "SELECT tax_details.*, tax_type.name AS tax_type_name, tax_type.rate AS rate
-        FROM ".TB_PREF."trans_tax_details tax_details INNER JOIN 
-        ".TB_PREF."tax_types tax_type ON tax_type.id = tax_details.tax_type_id
+    $sql = "SELECT tax_details.*, SUM(tax_details.amount) amount, SUM(tax_details.net_amount) as net_amount,
+            tax_type.name AS tax_type_name, tax_type.rate AS rate
+        FROM ".TB_PREF."trans_tax_details tax_details
+         LEFT JOIN ".TB_PREF."tax_types tax_type ON tax_type.id = tax_details.tax_type_id
         WHERE 
                 trans_type = ".db_escape($trans_type)."
             AND trans_no = ".db_escape($trans_no)."
-            AND (net_amount != 0 OR amount != 0)";
+            AND (net_amount != 0 OR amount != 0)
+        GROUP BY tax_type_id";
 
     return db_query($sql, "The transaction tax details could not be retrieved");
 }
@@ -524,27 +535,33 @@ function get_tax_summary($from, $to, $also_zero_purchases=false)
 				SUM(IF(trans_type=".ST_CUSTCREDIT.",-1,1)*
 				IF((reg_type=".TR_OUTPUT.")"
 					." || ((trans_type IN(".ST_SALESINVOICE.",".ST_CUSTCREDIT.") OR (trans_type=".ST_JOURNAL." AND reg_type=".TR_INPUT."))
-					), net_amount*ex_rate,0)
+						AND (tgroup.tax_area=".TA_EU." OR (tgroup.tax_area=".TA_EXPORT." AND taxrec.vat_category=".VC_SERVICES.")
+						OR taxrec.vat_category=".VC_REVERSE."))"
+						.($also_zero_purchases ? '': " AND tax_type_id AND taxrec.rate")
+					."), net_amount*ex_rate,0)
 				) net_output,
 
 				SUM(IF(trans_type=".ST_CUSTCREDIT.",-1,1)*
 				IF((reg_type=".TR_OUTPUT.")"
 					." || ((trans_type IN(".ST_SALESINVOICE.",".ST_CUSTCREDIT.") OR (trans_type=".ST_JOURNAL." AND reg_type=".TR_INPUT."))
+						AND (tgroup.tax_area=".TA_EU." OR (tgroup.tax_area=".TA_EXPORT." AND taxrec.vat_category=".VC_SERVICES.")
+						OR taxrec.vat_category=".VC_REVERSE.")
 					), amount*ex_rate,0)) payable,
 
 				SUM(IF(trans_type IN(".ST_SUPPCREDIT."),-1,1)*
 				IF(reg_type=".TR_INPUT
 					. ($also_zero_purchases ? '': " AND tax_type_id AND taxrec.rate")
-					.", net_amount*ex_rate, 0)) net_input,
+					." AND vat_category!=".VC_NONDEDUCT.", net_amount*ex_rate, 0)) net_input,
 
 				SUM(IF(trans_type IN(".ST_SUPPCREDIT."),-1,1)*
 				IF(reg_type=".TR_INPUT
 					. ($also_zero_purchases ? '': " AND tax_type_id AND taxrec.rate ") 
-					.", amount*ex_rate, 0)) collectible,
+					." AND vat_category!=".VC_NONDEDUCT.", amount*ex_rate, 0)) collectible,
 				taxrec.rate,
 				ttype.id,
 				ttype.name
 		FROM ".TB_PREF."trans_tax_details taxrec LEFT JOIN ".TB_PREF."tax_types ttype ON taxrec.tax_type_id=ttype.id
+			LEFT JOIN ".TB_PREF."tax_groups tgroup ON taxrec.tax_group_id=tgroup.id
 		WHERE taxrec.trans_type IN (".implode(',',
 			array(ST_SALESINVOICE, ST_CUSTCREDIT, ST_SUPPINVOICE, ST_SUPPCREDIT, ST_JOURNAL)).")
 			AND taxrec.tran_date >= '$fromdate'
@@ -583,20 +600,6 @@ function void_gl_trans($type, $trans_id, $nested=false)
 }
 
 //----------------------------------------------------------------------------------------
-
-function clear_gl_trans($type, $trans_id, $nested=false)
-{
-	if (!$nested)
-		begin_transaction();
-
-	$sql = "DELETE FROM ".TB_PREF."gl_trans WHERE type=".db_escape($type)
-	." AND type_no=".db_escape($trans_id);
-
-	db_query($sql, "could not clear gl transactions for type=$type and trans_no=$trans_id");
-
-	if (!$nested)
-		commit_transaction();
-}
 
 function get_sql_for_journal_inquiry($filter, $from, $to, $ref='', $memo='', $alsoclosed=false,
          $user_id=null)

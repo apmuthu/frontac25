@@ -19,16 +19,21 @@ if ($SysPrefs->use_popup_windows)
 if (user_use_date_picker())
 	$js .= get_js_date_picker();
 
-if (isset($_GET['FixedAsset'])) {
-  $page_security = 'SA_ASSET';
-  $_SESSION['page_title'] = _($help_context = "Fixed Assets");
-  $_POST['mb_flag'] = 'F';
-  $_POST['fixed_asset']  = 1;
+if (isset($_GET['type'])) {
+ 	if ($_GET['type'] == 'F') {
+
+	  $page_security = 'SA_ASSET';
+	  $_SESSION['page_title'] = _($help_context = "Fixed Assets");
+	  $_POST['mb_flag'] = 'F';
+	} elseif ($_GET['type'] == 'T') {
+
+	  $page_security = 'SA_SHIPPING';
+	  $_SESSION['page_title'] = _($help_context = "Shipping Options");
+	  $_POST['mb_flag'] = 'T';
+	}
 }
 else {
   $_SESSION['page_title'] = _($help_context = "Items");
-	if (!get_post('fixed_asset'))
-		$_POST['fixed_asset']  = 0;
 }
 
 
@@ -142,7 +147,7 @@ if (isset($_FILES['pic']) && $_FILES['pic']['name'] != '')
  /* EOF Add Image upload for New Item  - by Ori */
 }
 
-if (get_post('fixed_asset')) {
+if (get_post('mb_flag') == 'F') {
 	check_db_has_fixed_asset_categories(_("There are no fixed asset categories defined in the system. At least one fixed asset category is required to add a fixed asset."));
 	check_db_has_fixed_asset_classes(_("There are no fixed asset classes defined in the system. At least one fixed asset class is required to add a fixed asset."));
 } else
@@ -157,7 +162,8 @@ function clear_data()
 	unset($_POST['category_id']);
 	unset($_POST['tax_type_id']);
 	unset($_POST['units']);
-	unset($_POST['mb_flag']);
+	if (!in_array(@$_POST['mb_flag'], array('T', 'F')))
+		unset($_POST['mb_flag']);
 	unset($_POST['NewStockID']);
 	unset($_POST['dimension_id']);
 	unset($_POST['dimension2_id']);
@@ -205,7 +211,7 @@ if (isset($_POST['addupdate']))
 			set_focus('NewStockID');
 	}
 	
-  if (get_post('fixed_asset')) {
+  if (get_post('mb_flag') == 'F') {
     if ($_POST['depreciation_rate'] > 100) {
       $_POST['depreciation_rate'] = 100;
     }
@@ -226,41 +232,27 @@ if (isset($_POST['addupdate']))
 			if (file_exists($filename))
 				unlink($filename);
 		}
-		
-		if (!$new_item) 
-		{ /*so its an existing one */
-			update_item($_POST['NewStockID'], $_POST['description'],
+
+			write_item(get_post('stock_id'),
+				$_POST['NewStockID'], $_POST['description'],
 				$_POST['long_description'], $_POST['category_id'], 
-				$_POST['tax_type_id'], get_post('units'),
-				get_post('fixed_asset') ? 'F' : get_post('mb_flag'), $_POST['sales_account'],
+				$_POST['tax_type_id'], get_post('units'), 
+				get_post('mb_flag'), $_POST['sales_account'],
 				$_POST['inventory_account'], $_POST['cogs_account'],
 				$_POST['adjustment_account'], $_POST['wip_account'], 
 				$_POST['dimension_id'], $_POST['dimension2_id'],
 				check_value('no_sale'), check_value('editable'), check_value('no_purchase'),
 				get_post('depreciation_method'), input_num('depreciation_rate'), input_num('depreciation_factor'), get_post('depreciation_start', null),
-				get_post('fa_class_id'));
+				get_post('fa_class_id'), get_post('vat_category'), get_post('shipper', 0), check_value('inactive'));
 
-			update_record_status($_POST['NewStockID'], $_POST['inactive'],
-				'stock_master', 'stock_id');
-			update_record_status($_POST['NewStockID'], $_POST['inactive'],
-				'item_codes', 'item_code');
+		if (!$new_item) 
+		{ /*so its an existing one */
 			set_focus('stock_id');
 			$Ajax->activate('stock_id'); // in case of status change
 			display_notification(_("Item has been updated."));
 		} 
 		else 
 		{ //it is a NEW part
-
-			add_item($_POST['NewStockID'], $_POST['description'],
-				$_POST['long_description'], $_POST['category_id'], $_POST['tax_type_id'],
-				$_POST['units'], get_post('fixed_asset') ? 'F' : get_post('mb_flag'), $_POST['sales_account'],
-				$_POST['inventory_account'], $_POST['cogs_account'],
-				$_POST['adjustment_account'], $_POST['wip_account'], 
-				$_POST['dimension_id'], $_POST['dimension2_id'],
-				check_value('no_sale'), check_value('editable'), check_value('no_purchase'),
-				get_post('depreciation_method'), input_num('depreciation_rate'), input_num('depreciation_factor'), get_post('depreciation_start', null),
-				get_post('fa_class_id'));
-
 			display_notification(_("A new item has been added."));
 			$_POST['stock_id'] = $_POST['NewStockID'] = 
 			$_POST['description'] = $_POST['long_description'] = '';
@@ -314,6 +306,44 @@ if (isset($_POST['delete']) && strlen($_POST['delete']) > 1)
 	}
 }
 
+function generateBarcode() {
+	$tmpBarcodeID = "";
+	$tmpCountTrys = 0;
+	while ($tmpBarcodeID == "")	{
+		srand ((double) microtime( )*1000000);
+		$random_1  = rand(1,9);
+		$random_2  = rand(0,9);
+		$random_3  = rand(0,9);
+		$random_4  = rand(0,9);
+		$random_5  = rand(0,9);
+		$random_6  = rand(0,9);
+		$random_7  = rand(0,9);
+		//$random_8  = rand(0,9);
+
+			// http://stackoverflow.com/questions/1136642/ean-8-how-to-calculate-checksum-digit
+		$sum1 = $random_2 + $random_4 + $random_6; 
+		$sum2 = 3 * ($random_1  + $random_3  + $random_5  + $random_7 );
+		$checksum_value = $sum1 + $sum2;
+
+		$checksum_digit = 10 - ($checksum_value % 10);
+		if ($checksum_digit == 10) 
+			$checksum_digit = 0;
+
+		$random_8  = $checksum_digit;
+
+		$tmpBarcodeID = $random_1 . $random_2 . $random_3 . $random_4 . $random_5 . $random_6 . $random_7 . $random_8;
+
+		// LETS CHECK TO SEE IF THIS NUMBER HAS EVER BEEN USED
+		$query = "SELECT stock_id FROM ".TB_PREF."stock_master WHERE stock_id='" . $tmpBarcodeID . "'";
+		$arr_stock = db_fetch(db_query($query));
+  
+		if (  !$arr_stock['stock_id'] ) {
+			return $tmpBarcodeID;
+		}
+		$tmpBarcodeID = "";	 
+	}
+}
+
 function item_settings(&$stock_id, $new_item) 
 {
 	global $SysPrefs, $path_to_root, $page_nested, $depreciation_methods;
@@ -352,13 +382,12 @@ function item_settings(&$stock_id, $new_item)
 		hidden('NewStockID', $_POST['NewStockID']);
 		set_focus('description');
 	}
-	$fixed_asset = get_post('fixed_asset');
 
 	text_row(_("Name:"), 'description', null, 52, 200);
 
 	textarea_row(_('Description:'), 'long_description', null, 42, 3);
 
-	stock_categories_list_row(_("Category:"), 'category_id', null, false, $new_item, $fixed_asset);
+	stock_categories_list_row(_("Category:"), 'category_id', null, false, $new_item, get_post('mb_flag'));
 
 	if ($new_item && (list_updated('category_id') || !isset($_POST['sales_account']))) { // changed category for new item or first page view
 
@@ -366,10 +395,14 @@ function item_settings(&$stock_id, $new_item)
 
 		$_POST['tax_type_id'] = $category_record["dflt_tax_type"];
 		$_POST['units'] = $category_record["dflt_units"];
-		$_POST['mb_flag'] = $category_record["dflt_mb_flag"];
+		if (!in_array(get_post('mb_flag'), array('T', 'F')))
+			$_POST['mb_flag'] = $category_record["dflt_mb_flag"];
 		$_POST['inventory_account'] = $category_record["dflt_inventory_act"];
 		$_POST['cogs_account'] = $category_record["dflt_cogs_act"];
-		$_POST['sales_account'] = $category_record["dflt_sales_act"];
+		if (get_post('mb_flag') == 'T' && !isset($_POST['sales_account']))
+			$_POST['sales_account'] = get_company_pref('freight_act');
+		else
+			$_POST['sales_account'] = $category_record["dflt_sales_act"];
 		$_POST['adjustment_account'] = $category_record["dflt_adjustment_act"];
 		$_POST['wip_account'] = $category_record["dflt_wip_act"];
 		$_POST['dimension_id'] = $category_record["dflt_dim1"];
@@ -385,21 +418,24 @@ function item_settings(&$stock_id, $new_item)
 	// show inactive item tax type in selector only if already set.
   item_tax_types_list_row(_("Item Tax Type:"), 'tax_type_id', null, !$new_item && item_type_inactive(get_post('tax_type_id')));
 
-	if (!get_post('fixed_asset'))
-		stock_item_types_list_row(_("Item Type:"), 'mb_flag', null, $fresh_item);
+	if (!in_array(get_post('mb_flag'), array('T', 'F')))
+		stock_item_types_list_row(_("Item Type:"), 'mb_flag', null, $fresh_item, false);
 
 	stock_units_list_row(_('Units of Measure:'), 'units', null, $fresh_item);
 
+    vat_category_list_row(_("VAT category:"), 'vat_category', null, $fresh_item, false, !$new_item);
+
+	if (get_post('mb_flag') != 'T')
 	check_row(_("Editable description:"), 'editable');
 
-	if (get_post('fixed_asset'))
+	if (get_post('mb_flag') == 'F')
 		hidden('no_sale', 0);
 	else
 		check_row(_("Exclude from sales:"), 'no_sale');
 
 	check_row(_("Exclude from purchases:"), 'no_purchase');
 
-	if (get_post('fixed_asset')) {
+	if (get_post('mb_flag') == 'F') {
 		table_section_title(_("Depreciation"));
 
 		fixed_asset_classes_list_row(_("Fixed Asset Class").':', 'fa_class_id', null, false, true);
@@ -438,6 +474,8 @@ function item_settings(&$stock_id, $new_item)
 			label_row(_("Last Depreciation").':', $_POST['depreciation_date']==$_POST['depreciation_start'] ? _("None") :  $_POST['depreciation_date']);
 		}
 		hidden('depreciation_date');
+	} else if (get_post('mb_flag') == 'T') {
+		shippers_list_row(_("Shipping company:"), 'shipper');
 	}
 	table_section(2);
 
@@ -459,24 +497,23 @@ function item_settings(&$stock_id, $new_item)
 
 	gl_all_accounts_list_row(_("Sales Account:"), 'sales_account', $_POST['sales_account']);
 
-	if (get_post('fixed_asset')) {
-		gl_all_accounts_list_row(_("Asset account:"), 'inventory_account', $_POST['inventory_account']);
-		gl_all_accounts_list_row(_("Depreciation cost account:"), 'cogs_account', $_POST['cogs_account']);
-		gl_all_accounts_list_row(_("Depreciation/Disposal account:"), 'adjustment_account', $_POST['adjustment_account']);
+	switch(get_post('mb_flag')) {
+		case 'F':
+			gl_all_accounts_list_row(_("Asset account:"), 'inventory_account', $_POST['inventory_account']);
+			gl_all_accounts_list_row(_("Depreciation cost account:"), 'cogs_account', $_POST['cogs_account']);
+			gl_all_accounts_list_row(_("Depreciation/Disposal account:"), 'adjustment_account', $_POST['adjustment_account']);
+			break;
+		case 'T':
+		case 'D':
+			gl_all_accounts_list_row(_("C.O.G.S. Account:"), 'cogs_account', $_POST['cogs_account']);
+			hidden('inventory_account', $_POST['inventory_account']);
+			hidden('adjustment_account', $_POST['adjustment_account']);
+			break;
+		default:
+			gl_all_accounts_list_row(_("Inventory Account:"), 'inventory_account', $_POST['inventory_account']);
+			gl_all_accounts_list_row(_("C.O.G.S. Account:"), 'cogs_account', $_POST['cogs_account']);
+			gl_all_accounts_list_row(_("Inventory Adjustments Account:"), 'adjustment_account', $_POST['adjustment_account']);
 	}
-	elseif (!is_service(get_post('mb_flag')))
-	{
-		gl_all_accounts_list_row(_("Inventory Account:"), 'inventory_account', $_POST['inventory_account']);
-		gl_all_accounts_list_row(_("C.O.G.S. Account:"), 'cogs_account', $_POST['cogs_account']);
-		gl_all_accounts_list_row(_("Inventory Adjustments Account:"), 'adjustment_account', $_POST['adjustment_account']);
-	}
-	else 
-	{
-		gl_all_accounts_list_row(_("C.O.G.S. Account:"), 'cogs_account', $_POST['cogs_account']);
-		hidden('inventory_account', $_POST['inventory_account']);
-		hidden('adjustment_account', $_POST['adjustment_account']);
-	}
-
 
 	if (is_manufactured(get_post('mb_flag')))
 		gl_all_accounts_list_row(_("WIP Account:"), 'wip_account', $_POST['wip_account']);
@@ -509,7 +546,7 @@ function item_settings(&$stock_id, $new_item)
 		check_row(_("Delete Image:"), 'del_image');
 
 	record_status_list_row(_("Item status:"), 'inactive');
-	if (get_post('fixed_asset')) {
+	if (get_post('mb_flag') == 'F') {
 		table_section_title(_("Values"));
 		if (!$new_item) {
 			hidden('material_cost');
@@ -549,8 +586,12 @@ if (db_has_stock_items())
 {
 	start_table(TABLESTYLE_NOBORDER);
 	start_row();
-    stock_items_list_cells(_("Select an item:"), 'stock_id', null,
-	  _('New item'), true, check_value('show_inactive'), false, array('fixed_asset' => get_post('fixed_asset')));
+	if (get_post('mb_flag') == 'T')
+		shipping_methods_list_cells(_("Select method:"), 'stock_id', null, _("New method"), true);
+	else
+    	stock_items_list_cells(_("Select an item:"), 'stock_id', null,
+			_('New item'), true, check_value('show_inactive'), false,
+			array('fixed_asset' => get_post('mb_flag') == 'F'));
 	$new_item = get_post('stock_id')=='';
 	check_cells(_("Show inactive:"), 'show_inactive', null, true);
 	end_row();
@@ -572,22 +613,33 @@ $stock_id = get_post('stock_id');
 if (!$stock_id)
 	unset($_POST['_tabs_sel']); // force settings tab for new customer
 
-$tabs = (get_post('fixed_asset'))
-	? array(
-		'settings' => array(_('&General settings'), $stock_id),
-		'movement' => array(_('&Transactions'), $stock_id) )
-	: array(
-		'settings' => array(_('&General settings'), $stock_id),
-		'sales_pricing' => array(_('S&ales Pricing'), (user_check_access('SA_SALESPRICE') ? $stock_id : null)),
-		'purchase_pricing' => array(_('&Purchasing Pricing'), (user_check_access('SA_PURCHASEPRICING') ? $stock_id : null)),
-		'standard_cost' => array(_('Standard &Costs'), (user_check_access('SA_STANDARDCOST') ? $stock_id : null)),
-		'reorder_level' => array(_('&Reorder Levels'), (is_inventory_item($stock_id) && 
-			user_check_access('SA_REORDER') ? $stock_id : null)),
-		'movement' => array(_('&Transactions'), (user_check_access('SA_ITEMSTRANSVIEW') && is_inventory_item($stock_id) ? 
-			$stock_id : null)),
-		'status' => array(_('&Status'), (user_check_access('SA_ITEMSSTATVIEW') ? $stock_id : null)),
-	);
+switch(get_post('mb_flag')) {
+	case 'F':
+		$tabs = array(
+			'settings' => array(_('&General settings'), $stock_id),
+			'movement' => array(_('&Transactions'), $stock_id) );
+		break;
+	case 'T':
+		$tabs = array(
+			'settings' => array(_('&General settings'), $stock_id),
+			'sales_pricing' => array(_('S&ales Pricing'), (user_check_access('SA_SALESPRICE') ? $stock_id : null)),
+			'purchase_pricing' => array(_('&Purchasing Pricing'), (user_check_access('SA_PURCHASEPRICING') ? $stock_id : null)),
+			'unit_cost' => array(_('Unit &Cost'), (user_check_access('SA_STANDARDCOST') ? $stock_id : null)),
+			);
+		break;
 
+	default:
+		$tabs = array(
+			'settings' => array(_('&General settings'), $stock_id),
+			'sales_pricing' => array(_('S&ales Pricing'), (user_check_access('SA_SALESPRICE') ? $stock_id : null)),
+			'purchase_pricing' => array(_('&Purchasing Pricing'), (user_check_access('SA_PURCHASEPRICING') ? $stock_id : null)),
+			'unit_cost' => array(_('Unit &Cost'), (user_check_access('SA_STANDARDCOST') ? $stock_id : null)),
+			'reorder_level' => array(_('&Reorder Levels'), (is_inventory_item($stock_id) && 
+				user_check_access('SA_REORDER') ? $stock_id : null)),
+			'movement' => array(_('&Transactions'), (user_check_access('SA_ITEMSTRANSVIEW') && is_inventory_item($stock_id) ? 
+				$stock_id : null)),
+			'status' => array(_('&Status'), (user_check_access('SA_ITEMSSTATVIEW') ? $stock_id : null)), );
+}
 tabbed_content_start('tabs', $tabs);
 
 	switch (get_post('_tabs_sel')) {
@@ -605,7 +657,7 @@ tabbed_content_start('tabs', $tabs);
 			$_GET['page_level'] = 1;
 			include_once($path_to_root."/inventory/purchasing_data.php");
 			break;
-		case 'standard_cost':
+		case 'unit_cost':
 			$_GET['stock_id'] = $stock_id;
 			$_GET['page_level'] = 1;
 			include_once($path_to_root."/inventory/cost_update.php");
@@ -635,50 +687,9 @@ tabbed_content_end();
 div_end();
 
 hidden('fixed_asset', get_post('fixed_asset'));
-
-if (get_post('fixed_asset'))
-	hidden('mb_flag', 'F');
+if (in_array(get_post('mb_flag'), array('F', 'T')))
+	hidden('mb_flag', get_post('mb_flag'));
 
 end_form();
 
-//------------------------------------------------------------------------------------
-
 end_page();
-
-function generateBarcode() {
-	$tmpBarcodeID = "";
-	$tmpCountTrys = 0;
-	while ($tmpBarcodeID == "")	{
-		srand ((double) microtime( )*1000000);
-		$random_1  = rand(1,9);
-		$random_2  = rand(0,9);
-		$random_3  = rand(0,9);
-		$random_4  = rand(0,9);
-		$random_5  = rand(0,9);
-		$random_6  = rand(0,9);
-		$random_7  = rand(0,9);
-		//$random_8  = rand(0,9);
-
-			// http://stackoverflow.com/questions/1136642/ean-8-how-to-calculate-checksum-digit
-		$sum1 = $random_2 + $random_4 + $random_6; 
-		$sum2 = 3 * ($random_1  + $random_3  + $random_5  + $random_7 );
-		$checksum_value = $sum1 + $sum2;
-
-		$checksum_digit = 10 - ($checksum_value % 10);
-		if ($checksum_digit == 10) 
-			$checksum_digit = 0;
-
-		$random_8  = $checksum_digit;
-
-		$tmpBarcodeID = $random_1 . $random_2 . $random_3 . $random_4 . $random_5 . $random_6 . $random_7 . $random_8;
-
-		// LETS CHECK TO SEE IF THIS NUMBER HAS EVER BEEN USED
-		$query = "SELECT stock_id FROM ".TB_PREF."stock_master WHERE stock_id='" . $tmpBarcodeID . "'";
-		$arr_stock = db_fetch(db_query($query));
-  
-		if (  !$arr_stock['stock_id'] ) {
-			return $tmpBarcodeID;
-		}
-		$tmpBarcodeID = "";	 
-	}
-}

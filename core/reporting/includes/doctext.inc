@@ -39,7 +39,7 @@
 		$row = get_payment_terms($this->formData['payment_terms']);
 		$Payment_Terms = _("Payment Terms") . ': ' . $row["terms"];
 		if ($this->formData['doctype'] == ST_SALESINVOICE && $this->formData['prepaid'])
-			$this->formData['prepaid'] = ($row['days_before_due'] >= 0) ? 'final' : 'partial';
+			$this->formData['prepaid'] = ($row['type'] != PTT_PREPAY) ? 'final' : 'partial';
 	}
 
 
@@ -183,7 +183,7 @@
 				_("Customer's Reference") => $this->formData['supp_account_no'],
 				_("Sales Person") => $this->formData['contact'],
 				_("Your VAT no.") => $this->formData['tax_id'],
-				_("Supplier's Reference") => @$this->formData['requisition_no'],
+				_("Supplier's Reference") => @$this->formData['supp_reference'],
 				_("Order Date") => sql2date($this->formData['document_date']),
 			);
 

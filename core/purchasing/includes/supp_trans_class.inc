@@ -16,32 +16,34 @@ include_once($path_to_root . "/taxes/tax_calc.inc");
 
 class supp_trans 
 {
-
-	var $grn_items; /*array of objects of class grn_item using the id as the pointer */
-	var $gl_codes; /*array of objects of class gl_codes using a counter as the pointer */
-	var $supplier_id;
-	var $supplier_name;
-	var $terms;
-	var $ex_rate;
-	
-	var $tax_description;
-	var $tax_group_id;
-	var $tax_included;
-	
-	var $trans_type;	// invoice or credit
+	//db interface
 	var $trans_no;
-
-	var $Comments;
+	var $trans_type;	// invoice or credit
+	var $supplier_id;
+	var $reference;
+	var $supp_reference;
 	var $tran_date;
 	var $due_date;
-	var $src_docs = array();		// source invoice for this credit note (if any)
-
-	var $supp_reference;
-	var $reference;
 	var $ov_amount;
 	var $ov_discount;
 	var $ov_gst;
-	var $gl_codes_counter=0;
+	var $ex_rate;
+
+	var $tax_included;
+
+	var $grn_items; /*array of objects of class grn_item using the id as the pointer */
+	var $gl_codes; /*array of objects of class gl_codes using a counter as the pointer */
+	var $Comments;
+	//---
+
+	var $supplier_name;
+	var $terms;
+	
+	var $tax_description;
+	var $tax_group_id;
+
+	var $src_docs = array();		// source invoice for this credit note (if any)
+
 	var $credit = 0;
 	var $currency;
 	var $tax_overrides = array();		// array of taxes manually inserted during sales invoice entry
@@ -64,10 +66,10 @@ class supp_trans
  		$this->gl_codes = array();
 		if ($trans_no) {
 			read_supp_invoice($trans_no, $trans_type, $this);
+
 			if ($trans_type == ST_SUPPCREDIT)
-			{
 				$this->src_docs = find_src_invoices($trans_no);
-			}
+
 			read_supplier_details_to_trans($this, $this->supplier_id);
 		}
 	}
@@ -76,10 +78,12 @@ class supp_trans
 		$qty_recd, $prev_quantity_inv, $this_quantity_inv, $order_price, $chg_price, 
 		$std_cost_unit=null, $gl_code='')
 	{
-		$this->grn_items[$grn_item_id] = new grn_item($grn_item_id, $po_detail_item, 
+		$line = new grn_item($grn_item_id, $po_detail_item, 
 			$item_code, $item_description, $qty_recd, $prev_quantity_inv, $this_quantity_inv, 
 			$order_price, $chg_price, $std_cost_unit, $gl_code, $this->tax_included);
 
+		$line->cart = $this;
+		$this->grn_items[$grn_item_id] = $line;
 		$this->src_docs = find_src_invoices($this);
 
 		unset($this->tax_overrides); // cancel tax overrides after cart change
@@ -88,9 +92,7 @@ class supp_trans
 
 	function add_gl_codes_to_trans($gl_code, $gl_act_name, $gl_dim, $gl_dim2, $amount, $memo_)
 	{
-		$this->gl_codes[$this->gl_codes_counter] = new gl_codes($this->gl_codes_counter, 
-			$gl_code, $gl_act_name, $gl_dim, $gl_dim2, $amount, $memo_);
-		$this->gl_codes_counter++;
+		$this->gl_codes[] = new gl_codes($gl_code, $gl_act_name, $gl_dim, $gl_dim2, $amount, $memo_);
 		unset($this->tax_overrides); // cancel tax overrides after cart change
 		return 1;
 	}
@@ -122,27 +124,18 @@ class supp_trans
 		$this->gl_codes = array();
 	}
 
-    function get_taxes($tax_group_id=null, $shipping_cost=0, $gl_codes=true)
+    function get_taxes($gl_codes=true)
     {
     	$items = array();
     	$prices = array();
 
-        if ($tax_group_id == null)
-        	$tax_group_id = $this->tax_group_id;
-
-		// preload the taxgroup
-		$tax_group = get_tax_group_items_as_array($tax_group_id);
-
         foreach ($this->grn_items as $ln_itm) 
         {
         	$items[] = $ln_itm->item_code;
-        	$prices[] =round( ($ln_itm->this_quantity_inv * $ln_itm->chg_price),
-				user_price_dec());
+        	$prices[] = round( $ln_itm->this_quantity_inv * $ln_itm->chg_price, user_price_dec());
         }
 
-        if ($tax_group_id == null)
-        	$tax_group_id = $this->tax_group_id;
-        $taxes = get_tax_for_items($items, $prices, $shipping_cost, $tax_group_id, 
+        $taxes = get_tax_for_items($this->trans_type, $items, $prices, $this->tax_group_id, 
         	$this->tax_included);
 
 		if (isset($this->tax_overrides))
@@ -152,7 +145,7 @@ class supp_trans
 			}
 
 		// Taxes included in gl_codes table have exact value, but count to overrides as well.
-		// Therefore when we want to now taxes only for items (gl_codes==false),
+		// Therefore when we want to know taxes only for items (gl_codes==false),
 		// we have to subtract gl_taxes from override values.
 		foreach ($this->gl_codes as $gl_code)
 		{
@@ -165,24 +158,17 @@ class supp_trans
 					$taxes[$index]['Override'] -= $gl_code->amount;
 			}
 		}
-
         return $taxes;
     }
 	//
 	//	Returns total invoice amount without taxes.
 	//
-    function get_total_taxfree($tax_group_id=null)
+    function get_total_taxfree()
     {
     	$total = 0;
 
-		// preload the taxgroup !
-		if ($tax_group_id != null)
-			$tax_group = get_tax_group_items_as_array($tax_group_id);
-		else
-			$tax_group = null;
-
 		foreach ($this->grn_items as $ln_itm)
-    		$total += round(($ln_itm->this_quantity_inv * $ln_itm->taxfree_charge_price($tax_group_id, $tax_group)),
+    		$total += round(($ln_itm->this_quantity_inv * $ln_itm->taxfree_charge_price()),
 			 user_price_dec());
 
    		foreach ($this->gl_codes as $gl_line)
@@ -192,6 +178,7 @@ class supp_trans
    		}
    		return $total;
     }
+
 	//
 	//	Returns transaction total 
 	//
@@ -209,6 +196,43 @@ class supp_trans
 		}
 		return $total;
 	}
+
+	/*
+		Split line value to cost and taxes.
+		Stores calculated amounts in $line->gl_amounts array.
+	*/
+	function split_line_values()
+	{
+		// split nominal line values
+		foreach($this->grn_items as $line)
+			$line->split_item_value();
+
+		// Exact tax values are currently entered as tax totals, so we need to move the differences back on line level.
+		// currently first item with given tax type will be fixed with the calculated difference
+		// FIXME: change UI moving tax edit to line level in line edit mode, then this workaround will be obsolete.
+		foreach($this->get_taxes() as $tax_id => $tax)
+		{
+			if ($tax['Value'] != 0 && isset($tax['Override']) && ($tax['Value'] != $tax['Override']))
+			{
+				foreach($this->grn_items as $id => $line)
+					if ($line->gl_amounts[0]['tax_type_id'] == $tax_id) // assumed single tax rate on item, so always gl_amounts[0] is valid
+					{
+						$diff = $tax['Override'] - $tax['Value'];
+						$this->grn_items[$id]->gl_amounts[0]['Value'] += $diff;
+						if ($line->vat_category != VC_NONDEDUCT)
+							$this->grn_items[$id]->gl_amounts[0]['Deductible'] += $diff;
+						else
+							$this->grn_items[$id]->gl_amounts['Cost'] += $diff;
+						 // when supplier uses net prices the price is exact, so don't fix net, still record exact VAT.
+						if ($this->tax_included) {
+							$this->grn_items[$id]->gl_amounts['Net'] -= $diff;
+							$this->grn_items[$id]->gl_amounts['Cost'] -= $diff;
+						}
+						break;
+					}
+			}
+		}
+	}
 } /* end of class defintion */
 
 class grn_item 
@@ -218,17 +242,24 @@ class grn_item
 all the info to do the necessary entries without looking up ie additional queries of the database again */
 
 	var $id;
+
+	var $gl_code;
+
 	var $po_detail_item;
 	var $item_code;
 	var $item_description;
+	var $this_quantity_inv;
+	var $chg_price;
+
 	var $qty_recd;
 	var $prev_quantity_inv;
-	var $this_quantity_inv;
 	var $order_price;
-	var $chg_price;
 	var $std_cost_unit;
-	var $gl_code;
 	var $tax_included;
+	var $gl_amounts; 	// splited line value (after call to split_line_value method
+	var $vat_category;
+
+	var $cart; // line context
 
 	function __construct($id, $po_detail_item, $item_code, $item_description, $qty_recd, 
 		$prev_quantity_inv, $this_quantity_inv, $order_price, $chg_price,
@@ -242,23 +273,38 @@ all the info to do the necessary entries without looking up ie additional querie
 		$this->qty_recd = $qty_recd;
 		$this->prev_quantity_inv = $prev_quantity_inv;
 		$this->this_quantity_inv = $this_quantity_inv;
-		$this->order_price =$order_price;
+		$this->order_price = $order_price; 		// price on order
 		$this->chg_price = $chg_price;
-		$this->std_cost_unit = $std_cost_unit;
+		$this->std_cost_unit = $std_cost_unit;	// provisional cost for clearing
 		$this->gl_code = $gl_code;
 		$this->tax_included = $tax_included;
+
+		$opts = get_item($item_code);
+		$this->vat_category = $opts['vat_category'];
 	}
 
-	function full_charge_price($tax_group_id, $tax_group=null)
+//	function full_charge_price($tax_group_id, $trans_type=ST_PURCHORDER)
+//	{
+//		return get_full_price_for_item($trans_type, $this->item_code, 
+//		  $this->chg_price, $tax_group_id, $this->tax_included);
+//	}
+
+	function taxfree_charge_price()
 	{
-		return get_full_price_for_item($this->item_code, 
-		  $this->chg_price, $tax_group_id, $this->tax_included, $tax_group);
+		$this->split_item_value();
+		return $this->gl_amounts['Net'];
 	}
 
-	function taxfree_charge_price($tax_group_id, $tax_group=null)
+	/*
+		Splits item value to parts posted to GL.
+	*/
+	function split_item_value()
 	{
-		return get_tax_free_price_for_item($this->item_code, $this->chg_price, 
-		  $tax_group_id, $this->tax_included, $tax_group);
+
+        $vat_factor = 1;
+
+		return $this->gl_amounts = split_item_price($this->item_code, $this->chg_price*$this->this_quantity_inv, $this->cart->tax_group_id, $this->cart->tax_included, 
+			$this->cart->trans_type, $vat_factor);
 	}
 }
 
@@ -266,7 +312,6 @@ all the info to do the necessary entries without looking up ie additional querie
 class gl_codes 
 {
 
-	var $Counter;
 	var $gl_code;
 	var $gl_act_name;
 	var $gl_dim;
@@ -274,11 +319,8 @@ class gl_codes
 	var $amount;
 	var $memo_;
 
-	function __construct($Counter, $gl_code, $gl_act_name, $gl_dim, $gl_dim2, $amount, $memo_)
+	function __construct($gl_code, $gl_act_name, $gl_dim, $gl_dim2, $amount, $memo_)
 	{
-
-	/* Constructor function to add a new gl_codes object with passed params */
-		$this->Counter = $Counter;
 		$this->gl_code = $gl_code;
 		$this->gl_act_name = $gl_act_name;
 		$this->gl_dim = $gl_dim;

@@ -15,6 +15,7 @@ function add_supplier($supp_name, $supp_ref, $address, $supp_address, $gst_no,
 	$curr_code, $payment_terms, $payable_account, $purchase_account, $payment_discount_account, 
 	$notes, $tax_group_id, $tax_included)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "INSERT INTO ".TB_PREF."suppliers (supp_name, supp_ref, address, supp_address, gst_no, website,
 		supp_account_no, bank_account, credit_limit, dimension_id, dimension2_id, curr_code,
 		payment_terms, payable_account, purchase_account, payment_discount_account, notes, 
@@ -40,6 +41,7 @@ function add_supplier($supp_name, $supp_ref, $address, $supp_address, $gst_no,
 		.db_escape($tax_included). ")";
 
 	db_query($sql,"The supplier could not be added");
+	commit_transaction();
 }
 
 function update_supplier($supplier_id, $supp_name, $supp_ref, $address, $supp_address, $gst_no, 
@@ -47,6 +49,7 @@ function update_supplier($supplier_id, $supp_name, $supp_ref, $address, $supp_ad
 	$curr_code, $payment_terms, $payable_account, $purchase_account, $payment_discount_account, 
 	$notes, $tax_group_id, $tax_included)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "UPDATE ".TB_PREF."suppliers SET supp_name=".db_escape($supp_name) . ",
 		supp_ref=".db_escape($supp_ref) . ",
 		address=".db_escape($address) . ",
@@ -69,12 +72,15 @@ function update_supplier($supplier_id, $supp_name, $supp_ref, $address, $supp_ad
 		." WHERE supplier_id = ".db_escape($supplier_id);
 
 	db_query($sql,"The supplier could not be updated");
+	commit_transaction();
 }
 
 function delete_supplier($supplier_id)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql="DELETE FROM ".TB_PREF."suppliers WHERE supplier_id=".db_escape($supplier_id);
 	db_query($sql,"check failed");
+	commit_transaction();
 }
 
 function get_supplier_details($supplier_id, $to=null, $all=true)
@@ -108,19 +114,13 @@ function get_supplier_details($supplier_id, $to=null, $all=true)
 		supp.tax_group_id
 
 		FROM ".TB_PREF."suppliers supp
-			 LEFT JOIN ".TB_PREF."supp_trans trans ON supp.supplier_id = trans.supplier_id AND trans.tran_date <= '$todate',
-			 ".TB_PREF."payment_terms
-
+			 LEFT JOIN ".TB_PREF."supp_trans trans ON supp.supplier_id = trans.supplier_id AND trans.tran_date <= '$todate'
+			 LEFT JOIN ".TB_PREF."payment_terms ON supp.payment_terms = ".TB_PREF."payment_terms.id
 		WHERE
-			 supp.payment_terms = ".TB_PREF."payment_terms.terms_indicator
-			 AND supp.supplier_id = $supplier_id ";
+			 supp.supplier_id = $supplier_id ";
 	if (!$all)
-		$sql .= "AND ABS(trans.ov_amount + trans.ov_gst + trans.ov_discount) - trans.alloc > ".FLOAT_COMP_DELTA." ";  
-	$sql .= "GROUP BY
-			  supp.supp_name,
-			  ".TB_PREF."payment_terms.terms,
-			  ".TB_PREF."payment_terms.days_before_due,
-			  ".TB_PREF."payment_terms.day_in_following_month";
+		$sql .= "AND ABS(trans.ov_amount + trans.ov_gst + trans.ov_discount) - trans.alloc > ".FLOAT_COMP_DELTA." ";
+
     $result = db_query($sql,"The customer details could not be retrieved");
     $supp = db_fetch($result);
 

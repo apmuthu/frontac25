@@ -109,6 +109,9 @@ function invoice_header(&$supp_trans)
 		$supp_trans->clear_items();
 		read_supplier_details_to_trans($supp_trans, $_POST['supplier_id']);
 		copy_from_trans($supp_trans);
+		$supp_trans->due_date = get_payment_due_date($supp_trans->terms, $supp_trans->tran_date);
+		$_POST['due_date'] = $supp_trans->due_date;
+		$Ajax->activate('due_date');
 	}
 
    	date_row(_("Date") . ":", 'tran_date', '', true, 0, 0, 0, "", true);
@@ -127,14 +130,14 @@ function invoice_header(&$supp_trans)
 	if (isset($_POST['_tran_date_changed'])) {
 		$Ajax->activate('_ex_rate');
 		$supp_trans->tran_date = $_POST['tran_date'];
-		get_duedate_from_terms($supp_trans);
+		$supp_trans->due_date = get_payment_due_date($supp_trans->terms, $supp_trans->tran_date);
 		$_POST['due_date'] = $supp_trans->due_date;
 		$Ajax->activate('due_date');
 	}
 
-    date_row(_("Due Date") . ":", 'due_date');
-
     label_row(_("Terms:"), $supp_trans->terms['description']);
+
+    date_row(_("Due Date") . ":", 'due_date');
 
 	if (get_company_pref('use_dimension'))
 		dimensions_list_row(_('Dimension').':', 'dimension', null, true, _('Default'), false, 1);
@@ -174,7 +177,7 @@ function invoice_totals(&$supp_trans)
    	start_table(TABLESTYLE, "width='95%'");
    	label_row(_("Sub-total:"), price_format( $supp_trans->ov_amount), "colspan=$colspan align=right", "align=right");
 
-    $taxes = $supp_trans->get_taxes($supp_trans->tax_group_id);
+    $taxes = $supp_trans->get_taxes();
     $tax_total = display_edit_tax_items($taxes, $colspan, $supp_trans->tax_included, 0, true);
 
     $display_total = price_format($supp_trans->ov_amount + $tax_total);
@@ -292,7 +295,7 @@ function display_gl_items(&$supp_trans, $mode=0)
 	if (count($supp_trans->gl_codes) > 0)
 	{
 
-		foreach ($supp_trans->gl_codes as $entered_gl_code)
+		foreach ($supp_trans->gl_codes as $n => $entered_gl_code)
 		{
 
 			alt_table_row_color($k);
@@ -313,9 +316,9 @@ function display_gl_items(&$supp_trans, $mode=0)
 
 			if ($mode == 1)
 			{
-				delete_button_cell("Delete2" . $entered_gl_code->Counter, _("Delete"),
+				delete_button_cell("Delete2" . $n, _("Delete"),
 					  _('Remove line from document'));
-                edit_button_cell("Edit" . $entered_gl_code->Counter, _("Edit"),
+                edit_button_cell("Edit" . $n, _("Edit"),
                       _('Edit line from document'));
 			}	
 			end_row();
@@ -386,12 +389,6 @@ function display_grn_items_for_selection(&$supp_trans, $k)
 
 			$n = $myrow["id"];
 			label_cell(get_trans_view_str(ST_SUPPRECEIVE, $myrow["grn_batch_id"]), "nowrap align='right'");
-		   	hidden('qty_recd'.$n, $myrow["qty_recd"]);
-           	hidden('item_code'.$n, $myrow["item_code"]);
-           	hidden('item_description'.$n, $myrow["description"]);
-           	hidden('prev_quantity_inv'.$n, $myrow['quantity_inv']);
-           	hidden('order_price'.$n, $myrow['unit_price']);
-           	hidden('po_detail_item'.$n, $myrow['po_detail_item']);
         	label_cell(get_trans_view_str(ST_PURCHORDER, $myrow["purch_order_no"]), "nowrap align='right'");
             label_cell($myrow["item_code"]);
             label_cell($myrow["description"]);
@@ -420,11 +417,6 @@ function display_grn_items_for_selection(&$supp_trans, $k)
         		submit_cells('grn_item_id'.$n, _("Add"), '', _("Add to Invoice"), true);
         	else	
         		submit_cells('grn_item_id'.$n, _("Add"), '', _("Add to Credit Note"), true);
-    		if (($supp_trans->trans_type == ST_SUPPINVOICE) && $_SESSION["wa_current_user"]->can_access('SA_GRNDELETE')) {	// Added 2008-10-18 by Joe Hunt. Special access rights needed.
-        		submit_cells('void_item_id'.$n, _("Remove"), '', _("WARNING! Be careful with removal. The operation is executed immediately and cannot be undone !!!"), true);
-				submit_js_confirm('void_item_id'.$n,
-					sprintf(_('You are about to remove all yet non-invoiced items from delivery line #%d. This operation also irreversibly changes related order line. Do you want to continue ?'), $n));
-			}
 			end_row();
     	}
     }
@@ -453,11 +445,7 @@ function display_grn_items(&$supp_trans, $mode=0)
 	if ($mode == 1)
 	{
 		if ($supp_trans->trans_type == ST_SUPPINVOICE)
-		{
 			$heading = _("Items Received Yet to be Invoiced");
-    		if ($_SESSION["wa_current_user"]->can_access('SA_GRNDELETE'))	// Added 2008-10-18 by Joe Hunt. Only admins can remove GRNs
-				$heading2 = _("WARNING! Be careful with removal. The operation is executed immediately and cannot be undone !!!");
-		}
 		else
 			$heading = _("Delivery Item Selected For Adding To A Supplier Credit Note");
 	}
@@ -501,8 +489,6 @@ function display_grn_items(&$supp_trans, $mode=0)
     		_("Received On"), _("Quantity Received"), _("Quantity Invoiced"),
     		_("Qty Yet To Invoice"), $supp_trans->tax_included ? _("Price after Tax") : _("Price before Tax"), 
     		_("Total"), "");
-    	if (($supp_trans->trans_type == ST_SUPPINVOICE) && $_SESSION["wa_current_user"]->can_access('SA_GRNDELETE'))	// Added 2008-10-18 by Joe Hunt. Only admins can remove GRNs
-    		$th[] = "";
 		if ($supp_trans->trans_type == ST_SUPPCREDIT)
 		{
 			$th[7] = _("Qty Yet To Credit");
@@ -548,8 +534,6 @@ function display_grn_items(&$supp_trans, $mode=0)
 			if ($mode == 1)
 			{
 				delete_button_cell("Delete" . $entered_grn->id, _("Edit"), _('Edit document line'));
-				if (($supp_trans->trans_type == ST_SUPPINVOICE) && $_SESSION["wa_current_user"]->can_access('SA_GRNDELETE'))	  
-					label_cell("");
 			}	
 			end_row();
 
@@ -592,26 +576,3 @@ function display_grn_items(&$supp_trans, $mode=0)
 
 	return $total_grn_value;
 }
-
-//--------------------------------------------------------------------------------------------------
-function get_duedate_from_terms(&$trans)
-{
-	$date = get_class($trans) == 'purch_order' ? $trans->orig_order_date : $trans->tran_date;
-
-	if (!is_date($date))
-	{
-		$date = Today();
-	}
-	if ($trans->terms['day_in_following_month'])
-	{ /*Its a day in the following month when due */
-		$trans->due_date =
-			add_days(end_month($date), $trans->terms["day_in_following_month"]);
-	}
-	else
-	{ /*Use the Days Before Due to add to the invoice date */
-		$trans->due_date = add_days($date, $trans->terms["days_before_due"]);
-	}
-}
-
-//--------------------------------------------------------------------------------------------------
-

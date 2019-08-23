@@ -11,12 +11,13 @@
 ***********************************************************************/
 function add_item_category($description, $tax_type_id, $sales_account, 
 	$cogs_account, $inventory_account, $adjustment_account, $wip_account, 
-	$units, $mb_flag, $dim1, $dim2, $no_sale, $no_purchase)
+	$units, $mb_flag, $dim1, $dim2, $no_sale, $no_purchase, $vat_category)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "INSERT INTO ".TB_PREF."stock_category (description, dflt_tax_type,
 			dflt_units, dflt_mb_flag, dflt_sales_act, dflt_cogs_act, 
 			dflt_inventory_act, dflt_adjustment_act, dflt_wip_act, 
-			dflt_dim1, dflt_dim2, dflt_no_sale, dflt_no_purchase)
+			dflt_dim1, dflt_dim2, dflt_no_sale, dflt_no_purchase, vat_category)
 		VALUES ("
 		.db_escape($description).","
 		.db_escape($tax_type_id).","
@@ -30,16 +31,19 @@ function add_item_category($description, $tax_type_id, $sales_account,
 		.db_escape($dim1).","
 		.db_escape($dim2).","
 		.db_escape($no_sale).","
-		.db_escape($no_purchase).")";
+		.db_escape($no_purchase).","
+		.db_escape($vat_category).")";
 
 	db_query($sql,"an item category could not be added");
+	commit_transaction();
 }
 
 function update_item_category($id, $description, $tax_type_id, 
 	$sales_account, $cogs_account, $inventory_account, $adjustment_account, 
-	$wip_account, $units, $mb_flag, $dim1, $dim2, $no_sale, $no_purchase)
+	$wip_account, $units, $mb_flag, $dim1, $dim2, $no_sale, $no_purchase, $vat_category)
 
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql = "UPDATE ".TB_PREF."stock_category SET "
 		."description = ".db_escape($description).","
 		."dflt_tax_type = ".db_escape($tax_type_id).","
@@ -53,17 +57,21 @@ function update_item_category($id, $description, $tax_type_id,
 		."dflt_dim1 = ".db_escape($dim1).","
 		."dflt_dim2 = ".db_escape($dim2).","
 		."dflt_no_sale = ".db_escape($no_sale).","
-		."dflt_no_purchase = ".db_escape($no_purchase)
+		."dflt_no_purchase = ".db_escape($no_purchase).","
+		."vat_category = ".db_escape($vat_category)
         ."WHERE category_id = ".db_escape($id);
 
 	db_query($sql,"an item category could not be updated");
+	commit_transaction();
 }
 
 function delete_item_category($id)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	$sql="DELETE FROM ".TB_PREF."stock_category WHERE category_id=".db_escape($id);
 
 	db_query($sql,"an item category could not be deleted");
+	commit_transaction();
 }
 
 function get_item_categories($show_inactive, $fixed_asset=false)

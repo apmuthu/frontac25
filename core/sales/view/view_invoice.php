@@ -42,7 +42,7 @@ $branch = get_branch($myrow["branch_code"]);
 $sales_order = get_sales_order_header($myrow["order_"], ST_SALESORDER);
 
 display_heading(sprintf($myrow['prep_amount'] > 0 ? (
-	$paym['days_before_due']>=0 ? _("FINAL INVOICE #%d") : _("PREPAYMENT INVOICE #%d")) : _("SALES INVOICE #%d"),$trans_id));
+	$paym['type'] == PTT_PREPAY ? _("FINAL INVOICE #%d") : _("PREPAYMENT INVOICE #%d")) : _("SALES INVOICE #%d"),$trans_id));
 
 echo "<br>";
 start_table(TABLESTYLE2, "width='95%'");
@@ -89,7 +89,7 @@ label_cells(_("Our Order No"),
 end_row();
 start_row();
 label_cells(_("Customer Order Ref."), $sales_order["customer_ref"], "class='tableheader2'");
-label_cells(_("Shipping Company"), $myrow["shipper_name"], "class='tableheader2'");
+label_cells(_("Shipping"), $myrow["shipping"], "class='tableheader2'");
 label_cells(_("Sales Type"), $myrow["sales_type"], "class='tableheader2'");
 end_row();
 start_row();

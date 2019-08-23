@@ -11,7 +11,7 @@
 ***********************************************************************/
 function add_item_tax_type($name, $exempt, $exempt_from)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	
 	$sql = "INSERT INTO ".TB_PREF."item_tax_types (name, exempt) 
 		VALUES (".db_escape($name).",".db_escape($exempt).")";
@@ -28,7 +28,7 @@ function add_item_tax_type($name, $exempt, $exempt_from)
 
 function update_item_tax_type($id, $name, $exempt, $exempt_from)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	
 	$sql = "UPDATE ".TB_PREF."item_tax_types SET name=".db_escape($name).
 	",	exempt=".db_escape($exempt)." WHERE id=".db_escape($id);
@@ -62,20 +62,21 @@ function get_item_tax_type($id)
 
 function get_item_tax_type_for_item($stock_id)
 {
-	$sql = "SELECT item_tax_type.*
-		FROM ".TB_PREF."item_tax_types item_tax_type,"
+	$sql = "SELECT tax_type.*, item.vat_category
+		FROM ".TB_PREF."item_tax_types tax_type,"
 			.TB_PREF."stock_master item
-		WHERE item.stock_id=".db_escape($stock_id)."
-		AND item_tax_type.id=item.tax_type_id";
-	
+		WHERE 
+			item.stock_id=".db_escape($stock_id)."
+			AND tax_type.id=item.tax_type_id";
+
 	$result = db_query($sql, "could not get item tax type");
-	
-	return db_fetch($result);	
+
+	return db_fetch($result);
 }
 
 function delete_item_tax_type($id)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 		
 	$sql = "DELETE FROM ".TB_PREF."item_tax_types WHERE id=".db_escape($id);
 		

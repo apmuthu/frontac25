@@ -45,26 +45,23 @@ if ($Mode=='ADD_ITEM' || $Mode=='UPDATE_ITEM')
 
 		// create an array of the taxes and array of rates
     	$taxes = array();
-    	$tax_shippings = array();
 
 		while (($id = find_submit('tax_type_id'))!=-1)
 		{
 			if (check_value('tax_type_id'.$id) != 0)
 			{
        			$taxes[] = $id;
-				$tax_shippings[] = check_value('tax_shipping'.$id);
 			}	
 			unset($_POST['tax_type_id' . $id]);
-			unset($_POST['tax_shipping' . $id]);
 		}
     	if ($selected_id != -1) 
     	{
-	   		update_tax_group($selected_id, $_POST['name'], $taxes, $tax_shippings);
+	   		update_tax_group($selected_id, $_POST['name'], $taxes, get_post('tax_area'));
 			display_notification(_('Selected tax group has been updated'));
     	} 
     	else 
     	{
-	   		add_tax_group($_POST['name'], $taxes, $tax_shippings);
+	   		add_tax_group($_POST['name'], $taxes, get_post('tax_area'));
 			display_notification(_('New tax group has been added'));
     	}
 
@@ -123,7 +120,7 @@ $result = get_all_tax_groups(check_value('show_inactive'));
 start_form();
 
 start_table(TABLESTYLE);
-$th = array(_("Description"), "", "");
+$th = array(_("Description"), _("Tax Area Type"), "", "");
 inactive_control_column($th);
 
 table_header($th);
@@ -135,6 +132,7 @@ while ($myrow = db_fetch($result))
 	alt_table_row_color($k);
 
 	label_cell($myrow["name"]);
+	label_cell($tax_area_types[$myrow['tax_area']]);
 
 	inactive_control_cell($myrow["id"], $myrow["inactive"], 'tax_groups', 'id');
  	edit_button_cell("Edit".$myrow["id"], _("Edit"));
@@ -157,12 +155,14 @@ if ($selected_id != -1)
     	$group = get_tax_group($selected_id);
 
     	$_POST['name']  = $group["name"];
+    	$_POST['tax_area']  = $group["tax_area"];
 
 	}
 	hidden('selected_id', $selected_id);
 
 }
 text_row_ex(_("Description:"), 'name', 40);
+vat_areas_list_row(_("Tax Area Type:"), 'tax_area');
 
 end_table();
 
@@ -171,7 +171,7 @@ display_note(_("Select the taxes that are included in this group."), 1, 1);
 $items = get_tax_group_rates($selected_id!=-1 ? $selected_id : null);
 
 start_table(TABLESTYLE2);
-$th = array(_("Tax"), "", _("Shipping Tax"));
+$th = array(_("Tax"), "");
 table_header($th);
 
 while($item = db_fetch($items)) 
@@ -181,8 +181,6 @@ while($item = db_fetch($items))
 	{
 		check_cells($item['tax_type_name'], 'tax_type_id' . $item['tax_type_id'], 
 			isset($item['rate']), true, false, "align='center'");
-		if (isset($item['rate']))
-			check_cells(null, 'tax_shipping' . $item['tax_type_id'], $item['tax_shipping']);
 	}
 	else
 	{
@@ -193,8 +191,6 @@ while($item = db_fetch($items))
 			//$_POST['_tax_type_id' . $item['tax_type_id'].'_update'] = 0;
 			$Ajax->activate('_page_body');
 		}
-		if (check_value('tax_type_id' . $item['tax_type_id'])==1)
-			check_cells(null, 'tax_shipping' . $item['tax_type_id'], null);
 	}		
 	end_row();	
 	

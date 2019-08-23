@@ -135,12 +135,12 @@ function get_customer_trans($trans_id, $trans_type, $customer_id=null)
 		$sql .= ",bank_act,".TB_PREF."bank_accounts.bank_name, ".TB_PREF."bank_accounts.bank_account_name,
 			".TB_PREF."bank_accounts.account_type AS BankTransType,
 			".TB_PREF."bank_accounts.bank_curr_code,
-			".TB_PREF."bank_trans.amount as bank_amount";
+			bt.amount as bank_amount, bt.charge bank_charge";
 	}
 
 	if ($trans_type == ST_SALESINVOICE || $trans_type == ST_CUSTCREDIT || $trans_type == ST_CUSTDELIVERY) {
-		// it's an invoice so also get the shipper and salestype
-		$sql .= ", ".TB_PREF."shippers.shipper_name, "
+		// it's an invoice so also get the shipping method and salestype
+		$sql .= ", IFNULL(ship.description, '-') shipping, "
 		.TB_PREF."sales_types.sales_type, "
 		.TB_PREF."sales_types.tax_included, "
 		."branch.*, "
@@ -155,16 +155,15 @@ function get_customer_trans($trans_id, $trans_type, $customer_id=null)
 
 	$sql .= " FROM ".TB_PREF."debtor_trans trans
 					LEFT JOIN ".TB_PREF."comments com ON trans.type=com.type AND trans.trans_no=com.id
-					LEFT JOIN ".TB_PREF."shippers ON ".TB_PREF."shippers.shipper_id=trans.ship_via, 
+					LEFT JOIN ".TB_PREF."stock_master ship ON ship.stock_id=trans.ship_via, 
 					".TB_PREF."debtors_master cust";
 
 	if ($trans_type == ST_CUSTPAYMENT || $trans_type == ST_BANKDEPOSIT) {
 		// it's a payment so also get the bank account
-		$sql .= ", ".TB_PREF."bank_trans, ".TB_PREF."bank_accounts";
+		$sql .= ", ".TB_PREF."bank_trans bt, ".TB_PREF."bank_accounts";
 	}
 
 	if ($trans_type == ST_SALESINVOICE || $trans_type == ST_CUSTCREDIT || $trans_type == ST_CUSTDELIVERY) {
-		// it's an invoice so also get the shipper, salestypes
 		$sql .= ", ".TB_PREF."sales_types, "
 		.TB_PREF."cust_branch branch, "
 		.TB_PREF."tax_groups ";
@@ -183,10 +182,10 @@ function get_customer_trans($trans_id, $trans_type, $customer_id=null)
 
 	if ($trans_type == ST_CUSTPAYMENT || $trans_type == ST_BANKDEPOSIT) {
 		// it's a payment so also get the bank account
-		$sql .= " AND ".TB_PREF."bank_trans.trans_no =".db_escape($trans_id)."
-			AND ".TB_PREF."bank_trans.type=$trans_type
-			AND ".TB_PREF."bank_trans.amount != 0
-			AND ".TB_PREF."bank_accounts.id=".TB_PREF."bank_trans.bank_act ";
+		$sql .= " AND bt.trans_no =".db_escape($trans_id)."
+			AND bt.type=$trans_type
+			AND bt.amount != 0
+			AND ".TB_PREF."bank_accounts.id=bt.bank_act ";
 	}
 	if ($trans_type == ST_SALESINVOICE || $trans_type == ST_CUSTCREDIT || $trans_type == ST_CUSTDELIVERY) {
 		// it's an invoice so also get the shipper

@@ -14,7 +14,7 @@ function add_stock_adjustment($items, $location, $date_, $reference, $memo_)
 {
 	global $SysPrefs, $path_to_root, $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	$args = func_get_args();
 	$args = (object)array_combine(array('items', 'location', 'date_', 'reference', 'memo_'), $args);
 	$args->trans_no = 0;
@@ -40,7 +40,7 @@ function add_stock_adjustment($items, $location, $date_, $reference, $memo_)
 		}
 
 		add_stock_adjustment_item($adj_id, $line_item->stock_id, $location, $date_, $reference,
-			$line_item->quantity, $line_item->standard_cost, $memo_);
+			$line_item->quantity, $line_item->unit_cost, $memo_);
 	}
 
 	add_comments(ST_INVADJUST, $adj_id, $date_, $memo_);
@@ -61,9 +61,11 @@ function add_stock_adjustment($items, $location, $date_, $reference, $memo_)
 
 function void_stock_adjustment($type_no)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prevoid(ST_INVADJUST, $type_no);
 	void_gl_trans(ST_INVADJUST, $type_no);
 	void_stock_move(ST_INVADJUST, $type_no);
+	commit_transaction();
 }
 
 //-------------------------------------------------------------------------------------------------------------
@@ -83,7 +85,7 @@ function get_stock_adjustment_items($trans_no)
 //--------------------------------------------------------------------------------------------------
 
 function add_stock_adjustment_item($adj_id, $stock_id, $location, $date_, $reference,
-	$quantity, $standard_cost, $memo_)
+	$quantity, $unit_cost, $memo_)
 {
 	$mb_flag = get_mb_flag($stock_id);
 
@@ -92,7 +94,7 @@ function add_stock_adjustment_item($adj_id, $stock_id, $location, $date_, $refer
     	display_db_error("Cannot do inventory adjustment for Service item : $stock_id", "");
     }
 
-	update_average_material_cost(null, $stock_id, $standard_cost, $quantity, $date_);
+	update_average_material_cost(null, $stock_id, $unit_cost, $quantity, $date_);
 
 	if (is_fixed_asset($mb_flag)) {
 		$sql = "UPDATE ".TB_PREF."stock_master SET inactive=1
@@ -101,19 +103,19 @@ function add_stock_adjustment_item($adj_id, $stock_id, $location, $date_, $refer
 	}
 
 	add_stock_move(ST_INVADJUST, $stock_id, $adj_id, $location,
-        $date_, $reference, $quantity, $standard_cost);
+        $date_, $reference, $quantity, $unit_cost);
 
-	$inv_value = $standard_cost * $quantity;
-	$adj_value = $standard_cost * -($quantity);
+	$inv_value = $unit_cost * $quantity;
+	$adj_value = $unit_cost * -($quantity);
 
 	if (is_fixed_asset($mb_flag)) {
 		// get the initial value of the fixed assset.
 		$row = get_fixed_asset_move($stock_id, ST_SUPPRECEIVE);
 		$inv_value = $row['price'] * $quantity;
-		$adj_value = (-($row['price']) + $standard_cost) * $quantity;
+		$adj_value = (-($row['price']) + $unit_cost) * $quantity;
 	}
 
-	if ($standard_cost > 0 || is_fixed_asset($mb_flag))
+	if ($unit_cost > 0 || is_fixed_asset($mb_flag))
 	{
 
 		$stock_gl_codes = get_stock_gl_code($stock_id);
@@ -127,6 +129,6 @@ function add_stock_adjustment_item($adj_id, $stock_id, $location, $date_, $refer
 	if (is_fixed_asset($mb_flag)) {
 		// Additional gl entry for fixed asset.
 		$grn_act = get_company_pref('default_loss_on_asset_disposal_act');
-		add_gl_trans_std_cost(ST_INVADJUST, $adj_id, $date_, $grn_act, 0, 0, $memo_, ($standard_cost * -($quantity)));
+		add_gl_trans_std_cost(ST_INVADJUST, $adj_id, $date_, $grn_act, 0, 0, $memo_, ($unit_cost * -($quantity)));
 	}
 }

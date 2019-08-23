@@ -11,24 +11,23 @@
 ***********************************************************************/
 
 function add_customer($CustName, $cust_ref, $address, $tax_id, $curr_code,
-	$dimension_id, $dimension2_id, $credit_status, $payment_terms, $discount, $pymt_discount, 
+	$dimension_id, $dimension2_id, $credit_status, $payment_terms, $discount,
 	$credit_limit, $sales_type, $notes)
 {
 	$sql = "INSERT INTO ".TB_PREF."debtors_master (name, debtor_ref, address, tax_id,
 		dimension_id, dimension2_id, curr_code, credit_status, payment_terms, discount, 
-		pymt_discount,credit_limit, sales_type, notes) VALUES ("
+		credit_limit, sales_type, notes) VALUES ("
 		.db_escape($CustName) .", " .db_escape($cust_ref) .", "
 		.db_escape($address) . ", " . db_escape($tax_id) . ","
 		.db_escape($dimension_id) . ", " 
 		.db_escape($dimension2_id) . ", ".db_escape($curr_code) . ", 
-		" . db_escape($credit_status) . ", ".db_escape($payment_terms) . ", " . $discount . ", 
-		" . $pymt_discount . ", " . $credit_limit 
+		" . db_escape($credit_status) .", " . db_escape($payment_terms) .", " . $discount . "," . $credit_limit 
 		 .", ".db_escape($sales_type).", ".db_escape($notes) . ")";
 	db_query($sql,"The customer could not be added");
 }
 
 function update_customer($customer_id, $CustName, $cust_ref, $address, $tax_id, $curr_code,
-	$dimension_id, $dimension2_id, $credit_status, $payment_terms, $discount, $pymt_discount,
+	$dimension_id, $dimension2_id, $credit_status, $payment_terms, $discount,
 	$credit_limit, $sales_type, $notes)
 {
 	$sql = "UPDATE ".TB_PREF."debtors_master SET name=" . db_escape($CustName) . ", 
@@ -41,7 +40,6 @@ function update_customer($customer_id, $CustName, $cust_ref, $address, $tax_id, 
 		credit_status=".db_escape($credit_status) . ", 
 		payment_terms=".db_escape($payment_terms) . ", 
 		discount=" . $discount . ", 
-		pymt_discount=" . $pymt_discount . ", 
 		credit_limit=" . $credit_limit . ", 
 		sales_type = ".db_escape($sales_type) . ", 
 		notes=".db_escape($notes) ."
@@ -52,7 +50,7 @@ function update_customer($customer_id, $CustName, $cust_ref, $address, $tax_id, 
 
 function delete_customer($customer_id)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	delete_entity_contacts('customer', $customer_id);
 
 	$sql = "DELETE FROM ".TB_PREF."debtors_master WHERE debtor_no=".db_escape($customer_id);
@@ -73,7 +71,7 @@ function get_customer_details($customer_id, $to=null, $all=true)
 	$past1 = get_company_pref('past_due_days');
 	$past2 = 2 * $past1;
 	// removed - debtor_trans.alloc from all summations
-	$sign = "IF(`type` IN(".implode(',',  array(ST_CUSTCREDIT,ST_CUSTPAYMENT,ST_BANKDEPOSIT))."), -1, 1)";
+	$sign = "IF(trans.`type` IN(".implode(',',  array(ST_CUSTCREDIT,ST_CUSTPAYMENT,ST_BANKDEPOSIT))."), -1, 1)";
 	if ($all)
     	$value = "IFNULL($sign*(trans.ov_amount + trans.ov_gst + trans.ov_freight + trans.ov_freight_tax + trans.ov_discount),0)";
     else		
@@ -87,12 +85,11 @@ function get_customer_details($customer_id, $to=null, $all=true)
 				Sum(IF ((TO_DAYS('$todate') - TO_DAYS($due)) > $past1,$value,0)) AS Overdue1,
 				Sum(IF ((TO_DAYS('$todate') - TO_DAYS($due)) > $past2,$value,0)) AS Overdue2
 			FROM ".TB_PREF."debtors_master debtor
-				 LEFT JOIN ".TB_PREF."debtor_trans trans ON trans.tran_date <= '$todate' AND debtor.debtor_no = trans.debtor_no AND trans.type <> ".ST_CUSTDELIVERY.","
-				 .TB_PREF."payment_terms terms,"
+				 LEFT JOIN ".TB_PREF."debtor_trans trans ON trans.tran_date <= '$todate' AND debtor.debtor_no = trans.debtor_no AND trans.type <> ".ST_CUSTDELIVERY."
+				 LEFT JOIN ".TB_PREF."payment_terms terms ON debtor.payment_terms = terms.id,"
 				 .TB_PREF."credit_status credit_status
 			WHERE
-					debtor.payment_terms = terms.terms_indicator
-	 			AND debtor.credit_status = credit_status.id";
+	 			debtor.credit_status = credit_status.id";
 	 if ($customer_id)
 		$sql .= " AND debtor.debtor_no = ".db_escape($customer_id);
 
@@ -100,9 +97,6 @@ function get_customer_details($customer_id, $to=null, $all=true)
 		$sql .= " AND ABS(trans.ov_amount + trans.ov_gst + trans.ov_freight + trans.ov_freight_tax + trans.ov_discount - trans.alloc) > ".FLOAT_COMP_DELTA;
 	$sql .= " GROUP BY
 			  	debtor.name,
-			  	terms.terms,
-			  	terms.days_before_due,
-			  	terms.day_in_following_month,
 			  	debtor.credit_limit,
 			  	credit_status.dissallow_invoices,
 			  	credit_status.reason_description";
@@ -137,7 +131,7 @@ function get_customer_name($customer_id)
 
 function get_customer_habit($customer_id)
 {
-	$sql = "SELECT debtor.pymt_discount, credit_status.dissallow_invoices
+	$sql = "SELECT credit_status.dissallow_invoices
 			FROM ".TB_PREF."debtors_master debtor,"
 				.TB_PREF."credit_status credit_status
 			WHERE debtor.credit_status = credit_status.id

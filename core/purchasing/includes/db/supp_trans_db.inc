@@ -14,7 +14,7 @@
 //	FIXME - this should be revised for transaction update case.
 //
 function write_supp_trans($type, $trans_no, $supplier_id, $date_, $due_date, $reference, $supp_reference,
-	$amount, $amount_tax, $discount, $err_msg="", $rate=0, $included=0)
+	$amount, $amount_tax, $discount, $rate=0, $included=0)
 {
 	$new = $trans_no==0;
 	$date = date2sql($date_);
@@ -39,13 +39,23 @@ function write_supp_trans($type, $trans_no, $supplier_id, $date_, $due_date, $re
 		".db_escape($reference).", ".db_escape($supp_reference).", ".db_escape($amount)
 		.", ".db_escape($amount_tax).", ".db_escape($rate).", ".db_escape($discount).", ".db_escape($included).")";
 
-	if ($err_msg == "")
-		$err_msg = "Cannot insert a supplier transaction record";
-
-	db_query($sql, $err_msg);
+	db_query($sql, "Cannot insert a supplier transaction record");
 	add_audit_trail($type, $trans_no, $date_);
 
 	return $trans_no;
+}
+/*
+	Helper for final supplier trans header summaries update.
+*/
+function update_supp_trans_sums($trans_type, $trans_no, $amount, $tax, $discount=0)
+{
+	$sql = "UPDATE ".TB_PREF."supp_trans 
+		SET	ov_amount=".db_escape($amount).",
+			ov_gst=".db_escape($tax).",
+			ov_discount=".db_escape($discount)."
+		WHERE trans_no=".db_escape($trans_no)." AND type=".db_escape($trans_type);
+
+	return db_query($sql, "Cannot update supplier transaction summaries");
 }
 
 //-------------------------------------------------------------------------------------------------------------
@@ -59,7 +69,7 @@ function get_supp_trans($trans_no, $trans_type=-1, $supplier_id=null)
 	{
 		// it's a payment so also get the bank account
 		$sql .= ", account.bank_name, account.bank_account_name, account.bank_curr_code,
-			account.account_type AS BankTransType, bank_trans.amount AS bank_amount,
+			account.account_type AS BankTransType, bank_trans.amount AS bank_amount, bank_trans.charge AS bank_charge,
 			bank_trans.ref ";
 	}
 
@@ -240,7 +250,7 @@ function get_sql_for_supplier_inquiry($filter, $after_date, $to_date, $supplier_
 		trans.id as trans_no,
 		trans.reference, 
 		supplier.supp_name, 
-		po.requisition_no AS supp_reference,
+		po.supp_reference,
     	delivery_date as tran_date, 
 		'' as due_date,
 		supplier.curr_code, 

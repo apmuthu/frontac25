@@ -39,21 +39,21 @@ if (user_use_date_picker())
 if (isset($_GET['ModifyOrderNumber']) && is_numeric($_GET['ModifyOrderNumber'])) {
 
 	$_SESSION['page_title'] = _($help_context = "Modify Purchase Order #") . $_GET['ModifyOrderNumber'];
-	create_new_po(ST_PURCHORDER, $_GET['ModifyOrderNumber']);
+	create_cart(ST_PURCHORDER, $_GET['ModifyOrderNumber']);
 	copy_from_cart();
 } elseif (isset($_GET['NewOrder'])) {
 
 	$_SESSION['page_title'] = _($help_context = "Purchase Order Entry");
-	create_new_po(ST_PURCHORDER, 0);
+	create_cart(ST_PURCHORDER, 0);
 	copy_from_cart();
 } elseif (isset($_GET['NewGRN'])) {
 
 	$_SESSION['page_title'] = _($help_context = "Direct GRN Entry");
-	create_new_po(ST_SUPPRECEIVE, 0);
+	create_cart(ST_SUPPRECEIVE, 0);
 	copy_from_cart();
 } elseif (isset($_GET['NewInvoice'])) {
 
-	create_new_po(ST_SUPPINVOICE, 0);
+	create_cart(ST_SUPPINVOICE, 0);
 	copy_from_cart();
 
 	if (isset($_GET['FixedAsset'])) {
@@ -311,9 +311,8 @@ function handle_add_new_item()
 
 			if ($allow_update)
 			{
-				$_SESSION['PO']->add_to_order (count($_SESSION['PO']->line_items), $_POST['stock_id'], input_num('qty'), 
-					get_post('stock_id_text'), //$myrow["description"], 
-					input_num('price'), '', // $myrow["units"], (retrived in cart)
+				$_SESSION['PO']->add_to_order($_POST['stock_id'], input_num('qty'), 
+					get_post('stock_id_text'), input_num('price'), 
 					$_SESSION['PO']->trans_type == ST_PURCHORDER ? $_POST['req_del_date'] : '', 0, 0);
 
 				unset_form_variables();
@@ -418,7 +417,7 @@ function handle_commit_order()
 	if (can_commit()) {
 
 		copy_to_cart();
-		new_doc_date($cart->orig_order_date);
+		new_doc_date($cart->tran_date);
 		if ($cart->order_no == 0) { // new po/grn/invoice
 			$trans_no = add_direct_supp_trans($cart);
 			if ($trans_no) {

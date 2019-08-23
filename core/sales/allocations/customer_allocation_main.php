@@ -32,6 +32,7 @@ if (!isset($_POST['customer_id']))
 echo "<center>" . _("Select a customer: ") . "&nbsp;&nbsp;";
 echo customer_list('customer_id', $_POST['customer_id'], true, true);
 echo "<br>";
+
 check(_("Show Settled Items:"), 'ShowSettled', null, true);
 echo "</center><br><br>";
 
@@ -65,6 +66,8 @@ function trans_view($trans)
 
 function alloc_link($row)
 {
+	global $all_settled;
+
 	return pager_link(_("Allocate"),
 		"/sales/allocations/customer_allocate.php?trans_no="
 			.$row["trans_no"] . "&trans_type=" . $row["type"]. "&debtor_no=" . $row["debtor_no"], ICON_ALLOC);
@@ -85,6 +88,12 @@ function check_settled($row)
 	return $row['settled'] == 1;
 }
 
+$all_settled = !db_num_rows(get_allocatable_to_cust_transactions($customer_id));
+
+if ($all_settled)
+	display_note('<b>'.
+		($customer_id ? _("There is no unsettled transactions for this customer.")
+			:_("There is no unsettled transactions.")).'</b><p>');
 
 $sql = get_allocatable_from_cust_sql($customer_id, $settled);
 

@@ -36,19 +36,13 @@ define('ST_WORKORDER', 26);
 define('ST_MANUISSUE', 28);
 define('ST_MANURECEIVE', 29);
 
-//
-//	Depreciation period types
-//
-define('FA_MONTHLY', 0);
-define('FA_YEARLY', 1);
-
 define('ST_SALESORDER', 30);
 define('ST_SALESQUOTE', 32);
 define('ST_COSTUPDATE', 35);
 define('ST_DIMENSION', 40);
 
 // Don't include these defines in the $systypes_array.
-// They are used for documents only.
+// They are used as report subtypes only.
 define ('ST_STATEMENT', 91);
 define ('ST_CHEQUE', 92);
 
@@ -226,7 +220,7 @@ define('TAG_DIMENSION', 2);
 //----------------------------------------------------------------------------------
 // Payment term types
 
-define('PTT_PRE', 1);
+define('PTT_PREPAY', 1);
 define('PTT_CASH', 2);
 define('PTT_DAYS', 3);
 define('PTT_FOLLOWING', 4);
@@ -246,9 +240,49 @@ define('BO_SUPPLIER', 3);
 
 include_once($path_to_root . '/includes/sysnames.inc');
 
+define('VC_NONE', -1);	// for tax adjustemnts
+define('VC_OTHER', 0);
+define('VC_MEDIA', 1);
+define('VC_ASSETS', 2);
+define('VC_NONDEDUCT', 3);
+define('VC_SERVICES', 4);
+define('VC_REVERSE', 5);
+define('VC_PARTIAL', 6);
+
+$vat_categories = array(
+	VC_OTHER => _('Other goods'),
+	VC_MEDIA => _('Continous services'),
+	VC_ASSETS => _('Fixed assets'),
+	VC_NONDEDUCT => _('No VAT deductible'),
+	VC_SERVICES => _('Other services'),
+	VC_PARTIAL => _('VAT partially deductible'),
+	VC_REVERSE => _('Reverse charge'),
+);
+
+//
+// Tax area categories
+//
+define('TA_DOMESTIC', 0);
+define('TA_EXPORT', 1);
+define('TA_EU', 2);
+
+$tax_area_types = array(
+	TA_DOMESTIC => _('Domestic'),
+	TA_EXPORT => _('Abroad'),
+	TA_EU => _('European Union'),
+);
+
+
 // tax register type
 define('TR_OUTPUT', 0); // sales
 define('TR_INPUT', 1);	// purchase
+
+//
+//	Depreciation period types
+//
+define('FA_MONTHLY', 0);
+define('FA_YEARLY', 1);
+
 //---------------------------------------------------------------------------------
 // Constants optionally redefined locally
 //

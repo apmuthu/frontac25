@@ -14,7 +14,7 @@ function add_sales_order(&$order)
 {
 	global $SysPrefs, $path_to_root, $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prewrite($order, $order->trans_type);
 	$order_no = get_next_trans_no($order->trans_type);
 	$del_date = date2sql($order->due_date);
@@ -86,7 +86,7 @@ function add_sales_order(&$order)
 
 function delete_sales_order($order_no, $trans_type)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prevoid($trans_type, $order_no);
 
 	$sql = "DELETE FROM ".TB_PREF."sales_orders WHERE order_no=" . db_escape($order_no) 
@@ -126,7 +126,7 @@ function update_sales_order($order)
 	$version= current($order->trans_no);
 	$total = $order->get_trans_total();
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prewrite($order, $order->trans_type);
 
 	if ($order->trans_type == ST_SALESORDER)
@@ -231,21 +231,23 @@ function get_sales_order_header($order_no, $trans_type)
 	  stype.id AS sales_type_id,
 	  stype.tax_included,
 	  stype.factor,
- 	  ship.shipper_name,
+ 	  ship.description as shipping,
 	  tax_group.name AS tax_group_name,
 	  tax_group.id AS tax_group_id,
 	  cust.tax_id,
 	  sorder.alloc,
 	  IFNULL(allocs.ord_allocs, 0)+IFNULL(inv.inv_allocs ,0) AS sum_paid,
-	  sorder.prep_amount>0 as prepaid
+	  sorder.prep_amount>0 as prepaid,
+	  terms.type=".PTT_CASH." as cash_sale
 	FROM ".TB_PREF."sales_orders sorder
 			LEFT JOIN (SELECT trans_no_to, sum(amt) ord_allocs FROM ".TB_PREF."cust_allocations
-				WHERE trans_type_to=".ST_SALESORDER." AND trans_no_to=".db_escape($order_no)." GROUP BY trans_no_to)
-				 allocs ON sorder.trans_type=".ST_SALESORDER." AND allocs.trans_no_to=sorder.order_no
+				WHERE trans_type_to=".ST_SALESORDER." AND trans_no_to=".db_escape($order_no)." GROUP BY trans_no_to) allocs 
+					ON sorder.trans_type=".ST_SALESORDER." AND allocs.trans_no_to=sorder.order_no
 			LEFT JOIN (SELECT order_, sum(alloc) inv_allocs FROM ".TB_PREF."debtor_trans 
 				WHERE type=".ST_SALESINVOICE." AND order_=".db_escape($order_no)."  GROUP BY order_)
 				 inv ON sorder.trans_type=".ST_SALESORDER." AND inv.order_=sorder.order_no
-			LEFT JOIN ".TB_PREF."shippers ship ON  ship.shipper_id = sorder.ship_via,"
+			LEFT JOIN ".TB_PREF."stock_master ship ON ship.stock_id = sorder.ship_via
+			LEFT JOIN ".TB_PREF."payment_terms terms ON sorder.payment_terms=terms.id,"
 	  .TB_PREF."debtors_master cust,"
 	  .TB_PREF."sales_types stype, "
 	  .TB_PREF."tax_groups tax_group, "
@@ -381,27 +383,6 @@ function close_sales_order($order_no)
 
 //---------------------------------------------------------------------------------------------------------------
 
-function get_invoice_duedate($terms, $invdate)
-{
-	if (!is_date($invdate))
-	{
-		return new_doc_date();
-	}
-	
-	$myrow = get_payment_terms($terms);
-	
-	if (!$myrow)
-		return $invdate;
-
-	if ($myrow['day_in_following_month'] > 0)
-		$duedate = add_days(end_month($invdate), $myrow['day_in_following_month']);
-	elseif ($myrow['days_before_due'] > 0)
-		$duedate = add_days($invdate, $myrow['days_before_due']);
-	else
-		$duedate = $invdate;
-	return $duedate;
-}
-
 function get_customer_to_order($customer_id) {
 
 	// Now check to ensure this account is not on hold */
@@ -417,7 +398,6 @@ function get_customer_to_order($customer_id) {
 		  cust.curr_code,
 		  cust.discount,
 		  cust.payment_terms,
-		  cust.pymt_discount,
 		  cust.credit_limit - Sum(IFNULL(IF(trans.type IN(".implode(',', array(ST_CUSTCREDIT, ST_CUSTPAYMENT, ST_BANKDEPOSIT))."),
 			-1, 1) * (ov_amount + ov_gst + ov_freight + ov_freight_tax + ov_discount),0)) as cur_credit
 		FROM ".TB_PREF."debtors_master cust
@@ -640,5 +620,16 @@ function last_sales_order_detail($order, $field)
         $last_query=db_query($sql, "Retreive last order detail");
         $row = db_fetch_row($last_query);
         return $row[0];
+}
+
+function get_sales_vat_category($trans_no, $type=ST_SALESINVOICE)
+{
+	$sql = "SELECT vat_category
+			FROM ".TB_PREF."debtor_trans_details line
+			LEFT JOIN ".TB_PREF."stock_master stock ON line.stock_id=stock.stock_id
+		WHERE debtor_trans_type=".db_escape($type)." AND debtor_trans_no=".db_escape($trans_no);
+	$result = db_query($sql, 'cannot check invoice category');
+  $line = db_fetch($result);
+	return $line['vat_category'];
 }
 

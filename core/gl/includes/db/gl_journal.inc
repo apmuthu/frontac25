@@ -56,8 +56,9 @@ function delete_journal($type, $trans_no)
 
 function get_journal($type, $trans_no)
 {
-	$sql = "SELECT * FROM ".TB_PREF."journal 
-	   WHERE `type`=".db_escape($type)." AND " ."`trans_no`=".db_escape($trans_no);
+	$sql = "SELECT gl.*, bt.reconciled reconcile_date FROM ".TB_PREF."journal gl
+		LEFT JOIN ".TB_PREF."bank_trans bt ON gl.`type`=bt.`type` AND gl.trans_no=bt.trans_no
+	   WHERE gl.`type`=".db_escape($type)." AND " ."gl.`trans_no`=".db_escape($trans_no);
 
 	$myrow= db_query($sql, 'cannot retrieve journal entry');
 	return db_fetch($myrow);
@@ -106,7 +107,7 @@ function write_journal_entries(&$cart)
 	$trans_type = $cart->trans_type;
 	$new = $cart->order_id == 0;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 
 	if (!$new)
 	{
@@ -126,6 +127,9 @@ function write_journal_entries(&$cart)
 	add_journal($trans_type, $trans_id, $total,	$date_ , $cart->currency, $ref,
 		$cart->source_ref, $cart->rate, $cart->event_date, $cart->doc_date);
 
+	if ($cart->reconcile_date)
+		update_reconcile_date($trans_type, $cart->order_id, $cart->reconcile_date);
+
 	$Refs->save($trans_type, $trans_id, $ref);
 	if ($new) {
 		add_comments($trans_type, $trans_id, $date_, $memo_);
@@ -142,10 +146,9 @@ function write_journal_entries(&$cart)
 
 //----------------------------------------------------------------------------------------
 
-function void_journal_trans($type, $type_no, $use_transaction=true)
+function void_journal_trans($type, $type_no)
 {
-	if ($use_transaction)
-		begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 
 	$sql = "UPDATE ".TB_PREF."journal SET amount=0
 		WHERE type=".db_escape($type)." AND trans_no=".db_escape($type_no);
@@ -154,7 +157,6 @@ function void_journal_trans($type, $type_no, $use_transaction=true)
 
 	void_bank_trans($type, $type_no, true);
 
-	if ($use_transaction)
-		commit_transaction();
+	commit_transaction();
 }
 

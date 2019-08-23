@@ -78,7 +78,7 @@ label_cells(_("Deliver From Location"), $_SESSION['View']->location_name, "class
 end_row();
 
 
-if ($_SESSION['View']->payment_terms['days_before_due']<0)
+if ($_SESSION['View']->payment_terms['type'] == PTT_PREPAY)
 {
 start_row();
 label_cells(_("Payment Terms"), $_SESSION['View']->payment_terms['terms'], "class='tableheader2'");
@@ -90,7 +90,8 @@ label_cells(_("All Payments Allocated"), price_format($_SESSION['View']->sum_pai
 end_row();
 } else
 	label_row(_("Payment Terms"), $_SESSION['View']->payment_terms['terms'], "class='tableheader2'", "colspan=3");
-
+$shipping = get_item($_SESSION['View']->ship_via);
+label_row(_("Shipping"), $shipping['description'], "class='tableheader2'", "colspan=3");
 label_row(_("Delivery Address"), nl2br($_SESSION['View']->delivery_address),
 	"class='tableheader2'", "colspan=3");
 label_row(_("Reference"), $_SESSION['View']->reference, "class='tableheader2'", "colspan=3");

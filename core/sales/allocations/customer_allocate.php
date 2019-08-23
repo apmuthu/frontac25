@@ -17,7 +17,6 @@ include_once($path_to_root . "/includes/session.inc");
 include_once($path_to_root . "/includes/data_checks.inc");
 include_once($path_to_root . "/sales/includes/sales_ui.inc");
 include_once($path_to_root . "/sales/includes/sales_db.inc");
-//include_once($path_to_root . "/sales/includes/ui/cust_alloc_ui.inc");
 
 $js = "";
 if ($SysPrefs->use_popup_windows)
@@ -57,15 +56,14 @@ function edit_allocations_for_transaction($type, $trans_no)
     display_heading($cart->person_name);
 
     display_heading2(_("Date:") . " <b>" . $cart->date_ . "</b>");
-   	display_heading2(_("Total:"). " <b>" . price_format($cart->bank_amount).' '.$cart->currency."</b>");
 
 	if (floatcmp($cart->bank_amount, $cart->amount))
-	{
-	    $total = _("Amount ot be settled:") . " <b>" . price_format($cart->amount).' '.$cart->person_curr."</b>";
-		if ($cart->currency != $cart->person_curr)
-    		$total .= sprintf(" (%s %s/%s)",  exrate_format($cart->bank_amount/$cart->amount), $cart->currency, $cart->person_curr);
-	   	display_heading2($total);
-	}
+		display_heading2(_("Total:"). " <b>" . price_format($cart->bank_amount).' '.$cart->currency."</b>");
+
+	$total = _("Amount to be settled:") . " <b>" . '<span id="total">'.price_format($cart->amount).'</span> '.$cart->person_curr."</b>";
+	if ($cart->currency != $cart->person_curr)
+		$total .= sprintf(" (%s %s/%s)",  exrate_format($cart->bank_amount/$cart->amount), $cart->currency, $cart->person_curr);
+	display_heading2($total);
 
     echo "<br>";
 
@@ -95,7 +93,7 @@ if (isset($_POST['Process']))
 {
 	if (check_allocations())
 	{
-		$_SESSION['alloc']->write();
+		write_cust_allocation($_SESSION['alloc']);
 		clear_allocations();
 		$_POST['Cancel'] = 1;
 	}

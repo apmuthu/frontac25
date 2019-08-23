@@ -291,7 +291,7 @@ if (isset($_POST['process_delivery']) && check_data()) {
 	if ($newdelivery)
 		new_doc_date($dn->document_date);
 
-	$delivery_no = $dn->write($bo_policy);
+	$delivery_no = write_sales_trans($dn, $bo_policy);
 
 	if ($delivery_no == -1)
 	{
@@ -353,8 +353,8 @@ locations_list_cells(null, 'Location', null, false, true);
 if (!isset($_POST['ship_via'])) {
 	$_POST['ship_via'] = $_SESSION['Items']->ship_via;
 }
-label_cell(_("Shipping Company"), "class='tableheader2'");
-shippers_list_cells(null, 'ship_via', $_POST['ship_via']);
+label_cell(_("Shipping Method"), "class='tableheader2'");
+shipping_methods_list_cells(null, 'ship_via', $_POST['ship_via']);
 
 // set this up here cuz it's used to calc qoh
 if (!isset($_POST['DispatchDate']) || !is_date($_POST['DispatchDate'])) {
@@ -373,7 +373,7 @@ echo "</td><td>";// outer table
 start_table(TABLESTYLE, "width='90%'");
 
 if (!isset($_POST['due_date']) || !is_date($_POST['due_date'])) {
-	$_POST['due_date'] = get_invoice_duedate($_SESSION['Items']->payment, $_POST['DispatchDate']);
+	$_POST['due_date'] = get_payment_due_date($_SESSION['Items']->payment, $_POST['DispatchDate']);
 }
 customer_credit_row($_SESSION['Items']->customer_id, $_SESSION['Items']->credit, "class='tableheader2'");
 

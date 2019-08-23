@@ -15,7 +15,7 @@ function add_stock_transfer($Items, $location_from, $location_to, $date_, $refer
 {
 	global $SysPrefs, $path_to_root, $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	$args = func_get_args();
 	$args = (object)array_combine(array('Items', 'location_from', 'location_to', 
 	'date_', 'reference', 'memo_'), $args);
@@ -61,7 +61,7 @@ function add_stock_transfer($Items, $location_from, $location_to, $date_, $refer
 // add 2 stock_moves entries for a stock transfer
 // $date_ is display date (not sql)
 // std_cost is in HOME currency
-// it seems the standard_cost field is not used at all
+// it seems the unit_cost field is not used at all
 
 function add_stock_transfer_item($transfer_id, $stock_id, $location_from, $location_to,
 	$date_, $reference, $quantity)
@@ -118,7 +118,9 @@ function get_stock_transfer_items($trans_no)
 
 function void_stock_transfer($type_no)
 {
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prevoid(ST_LOCTRANSFER, $type_no);
 	void_stock_move(ST_LOCTRANSFER, $type_no);
+	commit_transaction();
 }
 

@@ -1,4 +1,7 @@
 2019-08-19/23 Janusz Dobrowolski
+All changes committed to the FA 2.5 branch till date
+
+2019-08-19/23 Janusz Dobrowolski
 Updated SQL and some core files for FA v2.5
 A	sql/alter2.5.php
 A	sql/alter2.5.sql

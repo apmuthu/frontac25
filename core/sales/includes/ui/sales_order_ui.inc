@@ -85,7 +85,7 @@ function get_customer_details_to_order(&$order, $customer_id, $branch_id)
 	$deliver = $myrow['address']; // in case no branch address use company address
 
 	$order->set_customer($customer_id, $name, $myrow['curr_code'], 
-		$myrow['discount'], $myrow['payment_terms'], $myrow['pymt_discount']);
+		$myrow['discount'], $myrow['payment_terms']);
 
 	// the sales type determines the price list to be used by default
 	$order->set_sales_type($myrow['salestype'], $myrow['sales_type'], $myrow['tax_included'],
@@ -118,14 +118,14 @@ function get_customer_details_to_order(&$order, $customer_id, $branch_id)
 	$order->set_delivery($myrow["default_ship_via"], $myrow["br_name"],
 		$address);
 	if ($order->trans_type == ST_SALESINVOICE) {
-		$order->due_date = get_invoice_duedate($order->payment, $order->document_date);
+		$order->due_date = get_payment_due_date($order->payment, $order->document_date);
 	}
 	elseif ($order->trans_type == ST_SALESORDER)
 		$order->due_date = add_days($order->document_date, $SysPrefs->default_delivery_required_by());
 	elseif ($order->trans_type == ST_SALESQUOTE)
 		$order->due_date = add_days($order->document_date, $SysPrefs->default_quote_valid_days());
 
-	if($order->payment_terms['cash_sale']) {
+	if($order->payment_terms['type'] == PTT_CASH) {
 		$order->set_location($order->pos["pos_location"], $order->pos["location_name"]);
 	} else
 		$order->set_location($myrow["default_location"], $myrow["location_name"]);
@@ -215,9 +215,15 @@ function display_order_summary($title, &$order, $editable_items=false)
 	if ($order->trans_no!=0)
 		++$colspan;
 	start_row();
-	label_cell(_("Shipping Charge"), "colspan=$colspan align=right");
-	small_amount_cells(null, 'freight_cost', price_format(get_post('freight_cost',0)));
-	label_cell('', 'colspan=2');
+
+	label_cell(_("Shipping method:") . shipping_methods_list('ship_via', null, _("None"), true), "colspan=$colspan align=right");
+
+	if (get_post('ship_via') !== ALL_TEXT) 
+	{
+		small_amount_cells(null, 'freight_cost', price_format(get_post('freight_cost',0)));
+		label_cell('', 'colspan=2');
+	} else
+		label_cell('', 'colspan=3');
 	end_row();
 	$display_sub_total = price_format($total + input_num('freight_cost'));
 	label_row(_("Sub-total"), $display_sub_total, "colspan=$colspan align=right","align=right", 2);
@@ -303,8 +309,8 @@ function display_order_header(&$order, $editable, $date_text)
 
 				if (!in_array($order->trans_type, array(ST_SALESQUOTE, ST_SALESORDER))
 					&& ($order->pos['cash_sale'] != $order->pos['credit_sale'])
-					&& (($order->payment_terms['cash_sale'] && !$order->pos['cash_sale']) ||
-						(!$order->payment_terms['cash_sale'] && !$order->pos['credit_sale']))) {
+					&& (($order->payment_terms['type'] == PTT_CASH && !$order->pos['cash_sale']) ||
+						(!$order->payment_terms['type'] != PTT_CASH && !$order->pos['credit_sale']))) {
 							// force payment terms refresh if terms are editable
 							// and pos have no permitions for terms selected in customer record.
 							// Terms are set to first terms in allowed category below.
@@ -381,8 +387,8 @@ function display_order_header(&$order, $editable, $date_text)
 		if (get_post('payment') !== $order->payment) {
 			$order->payment = get_post('payment');
 			$order->payment_terms = get_payment_terms($order->payment);
-			$order->due_date = get_invoice_duedate($order->payment, $order->document_date);
-			if ($order->payment_terms['cash_sale']) {
+			$order->due_date = get_payment_due_date($order->payment, $order->document_date);
+			if ($order->payment_terms['type'] == PTT_CASH) {
 				$_POST['Location'] = $order->Location = $order->pos['pos_location'];
 				$order->location_name = $order->pos['location_name'];
 			}
@@ -428,7 +434,7 @@ function display_order_header(&$order, $editable, $date_text)
 			}
 			$Ajax->activate('_ex_rate');
 			if ($order->trans_type == ST_SALESINVOICE) {
-				$_POST['delivery_date'] = get_invoice_duedate(get_post('payment'), get_post('OrderDate'));
+				$_POST['delivery_date'] = get_payment_due_date(get_post('payment'), get_post('OrderDate'));
 			} else 
 				$_POST['delivery_date'] = add_days(get_post('OrderDate'), $SysPrefs->default_delivery_required_by());
 			$Ajax->activate('items_table');
@@ -457,12 +463,22 @@ function display_order_header(&$order, $editable, $date_text)
 
 	end_outer_table(1); // outer table
 
+	if (list_updated('ship_via')) {
+		$_SESSION['Items']->ship_via = get_post('ship_via');
+		$_POST['freight_cost'] = price_format(get_price(get_post('ship_via'), $_SESSION['Items']->customer_currency, get_post('sales_type')));
+		$Ajax->activate('items_table');
+	}
+
+
 	if ($change_prices != 0) {
 		foreach ($order->line_items as $line_no=>$item) {
 			$line = &$order->line_items[$line_no];
 			$line->price = get_kit_price($line->stock_id, $order->customer_currency,
 				$order->sales_type, $order->price_factor, get_post('OrderDate'));
 		}
+	}
+	if ($change_prices != 0 || list_updated('ship_via')) {
+		$_POST['freight_cost'] = price_format(get_price(get_post('ship_via'), $_SESSION['Items']->customer_currency, get_post('sales_type')));
 	    $Ajax->activate('items_table');
 	}
 
@@ -573,7 +589,7 @@ function display_delivery_details(&$order)
 	div_start('delivery');	
 
 
-	if ($order->payment_terms['cash_sale']) {	// Direct payment sale
+	if ($order->payment_terms['type'] == PTT_CASH) {	// Direct payment sale
 		$Ajax->activate('items_table');
 		display_heading(_('Cash payment'));
 		start_table(TABLESTYLE2, "width='60%'");
@@ -611,7 +627,7 @@ function display_delivery_details(&$order)
 		table_section(1);
 
 		locations_list_row(_("Deliver from Location:"), 'Location', null, false, true, $order->fixed_asset);
-		if ($order->payment_terms['days_before_due'] == -1)
+		if ($order->payment_terms['type'] == PTT_PREPAY)
 		{
 			$Ajax->addUpdate('items_table', 'prep_amount', price_format($order->get_trans_total())); // bind to items_table update
 			if (!$order->is_started())
@@ -639,8 +655,6 @@ function display_delivery_details(&$order)
 		text_row(_("Customer Reference:"), 'cust_ref', $order->cust_ref, 25, 25,
 		  _('Customer reference number for this order (if any)'));
 		textarea_row(_("Comments:"), "Comments", $order->Comments, 31, 5);
-
-		shippers_list_row(_("Shipping Company:"), 'ship_via', $order->ship_via);
 
 		end_outer_table(1);
 	}

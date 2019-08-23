@@ -52,13 +52,13 @@ class allocation
 	}
 
 	function add_item($type, $type_no, $date_, $due_date, $amount, $amount_allocated, 
-		$current_allocated, $ref)
+		$current_allocated, $ref, $early_discount=0, $early_days=0, $discount=0)
 	{
 		if (floatcmp($amount, 0))
 		{
 			$this->allocs[count($this->allocs)] = new allocation_item($type, $type_no, 
-				$date_, $due_date, $amount, $amount_allocated, $current_allocated, $ref);
-			return true;
+				$date_, $due_date, $amount, $amount_allocated, $current_allocated, $ref, $early_discount, $early_days, $discount);
+			return $this->allocs[count($this->allocs)-1];
 		} 
 		else 
 		{
@@ -67,13 +67,13 @@ class allocation
 	}
 	
 	function update_item($index, $type, $type_no, $date_, $due_date, 
-		$amount, $amount_allocated, $current_allocated, $ref)
+		$amount, $amount_allocated, $current_allocated, $ref, $early_discount=0, $early_days=0, $discount=0)
 	{
 		if (floatcmp($amount, 0))
 		{
 			$this->allocs[$index] = new allocation_item($type, $type_no, 
-				$date_, $due_date, $amount, $amount_allocated, $current_allocated, $ref);
-			return true;
+				$date_, $due_date, $amount, $amount_allocated, $current_allocated, $ref, $early_discount, $early_days, $discount);
+			return $this->allocs[$index];
 		} 
 		else 
 		{
@@ -82,7 +82,7 @@ class allocation
 	}
 	
 	function add_or_update_item($type, $type_no, $date_, $due_date, 
-		$amount, $amount_allocated, $current_allocated, $ref)
+		$amount, $amount_allocated, $current_allocated, $ref, $early_discount=0, $early_days=0, $discount=0)
 	{
 		for ($i = 0; $i < count($this->allocs); $i++) 
 		{
@@ -90,11 +90,11 @@ class allocation
 			if (($item->type == $type) && ($item->type_no == $type_no)) 
 			{
 				return $this->update_item($i, $type, $type_no, $date_, $due_date, 
-					$amount, $amount_allocated, $current_allocated, $ref);
+					$amount, $amount_allocated, $current_allocated, $ref, $early_discount, $early_days, $discount);
 			}
 		}
         return $this->add_item($type, $type_no, $date_, $due_date, 
-        	$amount, $amount_allocated, $current_allocated, $ref);
+        	$amount, $amount_allocated, $current_allocated, $ref, $early_discount, $early_days, $discount);
 	}
 
 	//
@@ -134,48 +134,26 @@ class allocation
 				$this->amount = $trans["Total"];
 			}
 		}
-	/* Now populate the array of possible (and previous actual) allocations 
-		for this customer/supplier. First get the transactions that have 
-		outstanding balances ie Total-alloc >0 */
 
+	/* Now populate the array of possible (and previous actual) allocations for this customer/supplier.
+		First get the transactions that have outstanding balances ie Total-alloc >0 */
 		$this->allocs = array();
 		if ($this->person_id)
 		{
 			if ($this->person_type==PT_SUPPLIER)
-				$trans_items = get_allocatable_to_supp_transactions($this->person_id);
+				$trans_items = get_allocatable_to_supp_transactions($this->person_id, $this->trans_no, $this->type);
 			else
-		 		$trans_items = get_allocatable_to_cust_transactions($this->person_id);
+		 		$trans_items = get_allocatable_to_cust_transactions($this->person_id, $this->trans_no, $this->type);
+
 			while ($myrow = db_fetch($trans_items))
 			{
-				$this->add_item($myrow["type"], $myrow["trans_no"],
+				$this->add_or_update_item ($myrow["type"], $myrow["trans_no"],
 					sql2date($myrow["tran_date"]),
 					sql2date($myrow["due_date"]),
-					$myrow["Total"], // trans total
-					$myrow["alloc"], // trans total allocated
-					0,
-					$myrow["reference"]); // this allocation
+					$myrow["Total"], $myrow["alloc"]-$myrow["amt"], $myrow["amt"],
+					$myrow["reference"],
+					$myrow["early_discount"], $myrow["early_days"], $myrow["discount"]);
 			}
-		}
-		if ($this->trans_no == 0) return; // this is new payment
-
-	/* Now get trans that might have previously been allocated to by this trans
-	NB existing entries where still some of the trans outstanding entered from
-	above logic will be overwritten with the prev alloc detail below */
-
-		if ($this->person_type==PT_SUPPLIER)
-			$trans_items = get_allocatable_to_supp_transactions($this->person_id, 
-				$this->trans_no, $this->type);
-		else
-		 	$trans_items = get_allocatable_to_cust_transactions($this->person_id, 
-				$this->trans_no, $this->type);
-
-		while ($myrow = db_fetch($trans_items))
-		{
-			$this->add_or_update_item ($myrow["type"], $myrow["trans_no"],
-				sql2date($myrow["tran_date"]),
-				sql2date($myrow["due_date"]),
-				$myrow["Total"],
-				$myrow["alloc"] - $myrow["amt"], $myrow["amt"], $myrow["reference"]);
 		}
 	}
 	//
@@ -204,16 +182,17 @@ class allocation
 				if ($this->person_type == PT_SUPPLIER) {
 					add_supp_allocation($amount,
 						$this->type, $this->trans_no,
-			    	 	$alloc_item->type, $alloc_item->type_no, $this->person_id, $this->date_);
+			    	 	$alloc_item->type, $alloc_item->type_no, $this->person_id, $this->date_, round2($alloc_item->early_discount*abs($alloc_item->amount), user_price_dec()));
 
 					update_supp_trans_allocation($alloc_item->type, $alloc_item->type_no, $this->person_id);
 				} else {
 	 				add_cust_allocation($amount,
 						$this->type, $this->trans_no,
- 			     		$alloc_item->type, $alloc_item->type_no, $this->person_id, $this->date_);
+ 			    		$alloc_item->type, $alloc_item->type_no, $this->person_id, $this->date_, round2($alloc_item->early_discount*abs($alloc_item->amount), user_price_dec()));
 
 	 				update_debtor_trans_allocation($alloc_item->type, $alloc_item->type_no, $this->person_id);
 				}
+
 				// Exchange Variations Joe Hunt 2008-09-20 ////////////////////
 				if ($alloc_item->type != ST_SALESORDER && !@$no_exchange_variations
 					&& $alloc_item->type != ST_PURCHORDER && $alloc_item->type != ST_JOURNAL && $this->type != ST_JOURNAL)
@@ -253,9 +232,12 @@ class allocation_item
 	var $ref;
 	
 	var $current_allocated;
+	var $early_discount;	// nominal early payment discount according to payment terms
+	var $early_days;	// days for early payment
+	var $discount_confirmed = false;
 	
 	function __construct($type, $type_no, $date_, $due_date, $amount, 
-		$amount_allocated, $current_allocated, $ref)
+		$amount_allocated, $current_allocated, $ref, $early_discount=0, $early_days=0)
 	{
 
 		$this->type = $type;
@@ -269,16 +251,23 @@ class allocation_item
 		$this->amount = $amount;
 		$this->amount_allocated = $amount_allocated;
 		$this->current_allocated = $current_allocated;
+		$this->early_discount = $early_discount;
+		$this->early_days = $early_days;
+	}
+
+	function confirm_discount($confirmed)
+	{
+		$this->discount_confirmed = $confirmed;
 	}
 }
 
 //--------------------------------------------------------------------------------
 
-function show_allocatable($show_totals) {
+function show_allocatable($reallocation) {
 
 	global $systypes_array;
 	
-    $k = $total_allocated = 0;
+    $k = $total_allocated = $total_discount = 0;
 
 	$cart = $_SESSION['alloc'];
 	$supp_ref = in_array($cart->type, array(ST_SUPPCREDIT, ST_SUPPAYMENT, ST_BANKPAYMENT));
@@ -288,14 +277,14 @@ function show_allocatable($show_totals) {
 		display_heading(sprintf(_("Allocated amounts in %s:"), $cart->person_curr));
 		start_table(TABLESTYLE, "width='60%'");
    		$th = array(_("Transaction Type"), _("#"), $supp_ref ? _("Supplier Ref"): _("Ref"), _("Date"), _("Due Date"), _("Amount"),
-   			_("Other Allocations"), _("Left to Allocate"), _("This Allocation"),'','');
+   			_("Other Allocations"), _("Left to Allocate"), _("Early Payment Discount"), _("This Allocation"),'','');
 
 	   	table_header($th);
-
+		$doc_ids = array();
 		foreach ($cart->allocs as $id => $alloc_item)
 		{
-		    if (floatcmp(abs($alloc_item->amount), $alloc_item->amount_allocated))
-		    {
+		    	$doc_ids[] = $id;
+		    	$early_discount = $alloc_item->early_discount != 0 && !date1_greater_date2($cart->date_,  add_days($alloc_item->date_, $alloc_item->early_days));
 				alt_table_row_color($k);
     			label_cell($systypes_array[$alloc_item->type]);
 	   			label_cell(get_trans_view_str($alloc_item->type, $alloc_item->type_no), "nowrap align='right'");
@@ -306,23 +295,35 @@ function show_allocatable($show_totals) {
 				amount_cell($alloc_item->amount_allocated);
 
 		    	$_POST['amount' . $id] = price_format($alloc_item->current_allocated);
-
+		    	
 	    		$un_allocated = round((abs($alloc_item->amount) - $alloc_item->amount_allocated), 6);
-	    		amount_cell($un_allocated, false,'', 'maxval'.$id);
-    			amount_cells(null, "amount" . $id);//, input_num('amount' . $id));
+
+				amount_cell($un_allocated-$alloc_item->current_allocated, false,'', 'left'.$id);
+
+    			if ($early_discount) {
+    				$discount = round2($alloc_item->early_discount*abs($alloc_item->amount),user_price_dec());
+					check_cells(null, 'early_disc'.$id, price_format($discount), false, false, 'align=center');
+					$total_discount += $discount;
+				} else {
+					label_cell(_("N/A"), 'align=center', 'early_disc'.$id); hidden('early_disc'.$id, 0);
+				}
+    			amount_cells(null, "amount" . $id);
+
 				label_cell("<a href='#' name=Alloc$id onclick='allocate_all(this.name.substr(5));return true;'>"
 					 . _("All") . "</a>");
 				label_cell("<a href='#' name=DeAll$id onclick='allocate_none(this.name.substr(5));return true;'>"
-					 . _("None") . "</a>".hidden("un_allocated" . $id, 
-					 price_format($un_allocated), false));
+					 . _("None") . "</a>".hidden("un_allocated".$id, price_format($un_allocated), false));
 				end_row();
 
    	    		$total_allocated += input_num('amount' . $id);
-		   	}
 		}
-		if ($show_totals) {
+		add_js_source('var docs=['.implode(',', $doc_ids).']');
+		if ($reallocation) {
     	   	label_row(_("Total Allocated"), price_format($total_allocated),
-	    		"colspan=8 align=right", "align=right id='total_allocated'", 3);
+	    		"colspan=9 align=right", "align=right id='total_allocated'", 3);
+
+    	   	label_row(_("Total Discount"), price_format($total_discount),
+	    		"colspan=9 align=right", "align=right id='total_discount'", 3);
 
 			$amount = abs($cart->amount);
 
@@ -335,7 +336,7 @@ function show_allocatable($show_totals) {
         		$font1 = $font2 = "";
 			$left_to_allocate = price_format($amount - $total_allocated);
 	        label_row(_("Left to Allocate"), $font1 . $left_to_allocate . $font2, 
-				"colspan=8 align=right", "nowrap align=right id='left_to_allocate'",
+				"colspan=9 align=right", "nowrap align=right id='left_to_allocate'",
 				 3);
 		}
 		end_table(1);
@@ -348,7 +349,7 @@ function check_allocations()
 {
 	global $SysPrefs;
 
-	$total_allocated = 0;
+	$total_allocated = $discount=0;
 
 	for ($counter = 0; $counter < get_post("TotalNumberOfAllocs"); $counter++)
 	{
@@ -374,11 +375,14 @@ function check_allocations()
 		 $_SESSION['alloc']->allocs[$counter]->current_allocated = input_num('amount' . $counter);
 
 		 $total_allocated += input_num('amount' . $counter);
-	}
 
+		 $_SESSION['alloc']->allocs[$counter]->discount_confirmed = check_value('early_disc'.$counter) != 0;
+		 $discount += check_value('early_disc'.$counter) 
+		 	? round2($_SESSION['alloc']->allocs[$counter]->early_discount*input_num('amount' . $counter), user_price_dec()) : 0;
+	}
 	$amount = abs($_SESSION['alloc']->amount);
 
-	if ($total_allocated - ($amount + input_num('discount'))  > $SysPrefs->allocation_settled_allowance())
+	if ($total_allocated - ($amount + $discount)  > $SysPrefs->allocation_settled_allowance())
 	{
 		display_error(_("These allocations cannot be processed because the amount allocated is more than the total amount left to allocate."));
 		return false;
@@ -405,3 +409,4 @@ function get_inv_allocations($trans_no, $trans_type, $person_id)
 	}
 	return $allocs;
 }
+

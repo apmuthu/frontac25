@@ -61,13 +61,11 @@ class Cart
 
 	var $tax_group_id;
 	var $tax_group_name;
-	var $tax_group_array = null; // saves db queries
 	var $price_factor;	 // ditto for price calculations
 
 	var	$pos;			// user assigned POS
 	var $cash_account;
 	var $account_name;
-	var $cash_discount;	// not used as of FA 2.1
 	var $dimension_id;
 	var $dimension2_id;
 	var $payment;
@@ -160,7 +158,7 @@ class Cart
 			$this->dimension2_id = $cust['dimension2_id'];
 		}
 		if ($type == ST_SALESINVOICE) {
-			$this->due_date = get_invoice_duedate($this->payment, $this->document_date);
+			$this->due_date = get_payment_due_date($this->payment, $this->document_date);
 		}
 
 		$this->src_docs = $this->trans_no;
@@ -272,7 +270,7 @@ class Cart
 			}	
 			if ($type == ST_SALESINVOICE) {
 				$this->due_date =
-					get_invoice_duedate($this->payment, $this->document_date);
+					get_payment_due_date($this->payment, $this->document_date);
 			} else
 				$this->due_date =
 					add_days($this->document_date, $SysPrefs->default_delivery_required_by());
@@ -285,7 +283,7 @@ class Cart
 	// Makes parent documents for direct delivery/invoice by recurent call.
 	// $policy - 0 or 1:  writeoff/return for IV, back order/cancel for DN
 	function write($policy=0) {
-		
+
 		global $SysPrefs, $Refs;
 		
 		begin_transaction(); // prevents partial database changes in case of direct delivery/invoice
@@ -345,7 +343,7 @@ class Cart
 		return $ret;
 	}
 
-	function set_customer($customer_id, $customer_name, $currency, $discount, $payment, $cdiscount=0)
+	function set_customer($customer_id, $customer_name, $currency, $discount, $payment)
 	{
 		$this->customer_name = $customer_name;
 		$this->customer_id = $customer_id;
@@ -353,9 +351,8 @@ class Cart
 		$this->customer_currency = $currency;
 		$this->payment = $payment;
 		$this->payment_terms = get_payment_terms($payment);
-		$this->cash_discount = $cdiscount;
 
-		if ($this->payment_terms['cash_sale']) {
+		if ($this->payment_terms['type'] == PTT_CASH) {
 			$this->Location = $this->pos['pos_location'];
 			$this->location_name = $this->pos['location_name'];
 		}
@@ -368,7 +365,6 @@ class Cart
 		$this->phone = $phone;
 		$this->email = $email;
 		$this->tax_group_id = $tax_group_id;
-		$this->tax_group_array = get_tax_group_items_as_array($tax_group_id);
 	}
 
 	function set_sales_type($sales_type, $sales_name, $tax_included=0, $factor=0)
@@ -394,13 +390,14 @@ class Cart
 			$this->freight_cost = $freight_cost;
 	}
 
-	function add_to_cart($line_no, $stock_id, $qty, $price, $disc, $qty_done=0, $standard_cost=0, $description=null, $id=0, $src_no=0,
+	function add_to_cart($line_no, $stock_id, $qty, $price, $disc, $qty_done=0, $unit_cost=0, $description=null, $id=0, $src_no=0,
 		$src_id=0)
 	{
 		$line = new line_details($stock_id, $qty, $price, $disc,
-			$qty_done,  $standard_cost, $description, $id, $src_no, $src_id);
+			$qty_done,  $unit_cost, $description, $id, $src_no, $src_id);
 
 		if ($line->valid) {
+			$line->cart = $this;
 			$this->line_items[$line_no] = $line;
 			return 1;
 		} else
@@ -503,12 +500,27 @@ class Cart
 		return 0;
 	}
 
+	/*
+		Split line value to cost and taxes.
+		Stores calculated amounts in $line->gl_amounts arrays.
+	*/
+	function split_line_values()
+	{
+		// split nominal line values
+		foreach ($this->line_items as $line)
+			$line->split_item_value();
+	}
+
 	function get_taxes($shipping_cost=null)
 	{
 		$items = array();
 		$prices = array();
-		if($shipping_cost==null)
-			$shipping_cost = $this->freight_cost;
+		if ($this->ship_via != '') {
+			if ($shipping_cost == null)
+				$shipping_cost = $this->freight_cost;
+			$items[] = $this->ship_via;
+			$prices[] = $shipping_cost;
+		}
 
 		foreach ($this->line_items as $ln_itm) {
 			$items[] = $ln_itm->stock_id;
@@ -517,8 +529,7 @@ class Cart
 				$ln_itm->line_price()* (1 - $ln_itm->discount_percent)),  user_price_dec());
 		}
 
-		$taxes = get_tax_for_items($items, $prices, $shipping_cost,
-		  	$this->tax_group_id, $this->tax_included,  $this->tax_group_array);
+		$taxes = get_tax_for_items($this->trans_type, $items, $prices, $this->tax_group_id, $this->tax_included);
 
     // Adjustment for swiss franken, we always have 5 rappen = 1/20 franken
     if ($this->customer_currency == 'CHF') {
@@ -541,21 +552,9 @@ class Cart
 
 	function get_shipping_tax()
 	{
+		$freight = split_item_price($this->ship_via, $this->freight_cost, $this->tax_group_id, $this->tax_included, $this->trans_type);
 
-		$tax_items = get_shipping_tax_as_array($this->tax_group_id);
-		$tax_rate = 0;
-		if ($tax_items != null) {
-			foreach ($tax_items as $item_tax) {
-				$index = $item_tax['tax_type_id'];
-				if (isset($this->tax_group_array[$index]['rate'])) {
-					$tax_rate += $item_tax['rate'];
-				}
-			}
-		}
-		if($this->tax_included)
-			return round($this->freight_cost*$tax_rate/($tax_rate+100),  user_price_dec());
-		else
-			return round($this->freight_cost*$tax_rate/100,  user_price_dec());
+		return $freight['Tax'];
 	}
 	/*
 		Returns transaction value including all taxes
@@ -644,7 +643,7 @@ class Cart
 		$remainder = prepaid_invoice_remainder($this->order_no);
 
 		// recalculate prepaid part from payments
-		if ($this->payment_terms['days_before_due'] == -1)
+		if ($this->payment_terms['type'] == PTT_PREPAY)
 		{	// this is partial invoice for selected prepayments made.
 			$paid = 0;
 			foreach($this->prepayments as $payment)
@@ -669,9 +668,10 @@ class line_details
 	var $price;
 	var $discount_percent;
 	
-	var $standard_cost;
+	var $unit_cost;
 	var $descr_editable;
 
+	var $cart; // line context
 	var $valid; // validation in constructor
 	/*
 		Line quantity properties in various cart create modes:
@@ -701,7 +701,7 @@ class line_details
 
 
 	function __construct($stock_id, $qty, $prc, $disc_percent,
-		$qty_done, $standard_cost, $description, $id=0, $src_no=0, $src_id=0)
+		$qty_done, $unit_cost, $description, $id=0, $src_no=0, $src_id=0)
 	{
 	/* Constructor function to add a new LineDetail object with passed params */
 
@@ -728,7 +728,7 @@ class line_details
 		$this->price = $prc;
 		$this->discount_percent = $disc_percent;
 		$this->qty_done = $qty_done;
-		$this->standard_cost = $standard_cost;
+		$this->unit_cost = $unit_cost;
 		$this->valid = true;
 	}
 
@@ -736,6 +736,21 @@ class line_details
 	function line_price()
 	{
 		return $this->price;
+	}
+
+	function taxfree_charge_price()
+	{
+		$this->split_item_value();
+		return $this->gl_amounts['Net'];
+	}
+
+	/*
+		Splits item value to parts posted to GL.
+	*/
+	function split_item_value()
+	{
+		return $this->gl_amounts = split_item_price($this->stock_id, $this->price*$this->quantity, $this->cart->tax_group_id, $this->cart->tax_included, 
+			$this->cart->trans_type);
 	}
 }
 

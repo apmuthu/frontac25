@@ -63,7 +63,6 @@ if (isset($_GET['NewDelivery']) && is_numeric($_GET['NewDelivery'])) {
 
 	$_SESSION['page_title'] = _($help_context = "Direct Sales Delivery");
 	create_cart(ST_CUSTDELIVERY, $_GET['NewDelivery']);
-
 } elseif (isset($_GET['NewInvoice']) && is_numeric($_GET['NewInvoice'])) {
 
 	create_cart(ST_SALESINVOICE, $_GET['NewInvoice']);
@@ -258,24 +257,25 @@ function copy_to_cart()
 {
 	$cart = &$_SESSION['Items'];
 
+
 	$cart->reference = $_POST['ref'];
 
 	$cart->Comments =  $_POST['Comments'];
 
 	$cart->document_date = $_POST['OrderDate'];
 
-	$newpayment = false;
 
+	$newpayment = false;
 	if (isset($_POST['payment']) && ($cart->payment != $_POST['payment'])) {
 		$cart->payment = $_POST['payment'];
 		$cart->payment_terms = get_payment_terms($_POST['payment']);
 		$newpayment = true;
 	}
-	if ($cart->payment_terms['cash_sale']) {
-		if ($newpayment) {
+	if ($cart->payment_terms['type'] == PTT_CASH) {
+		if ($newpayment) 
+		{
 			$cart->due_date = $cart->document_date;
 			$cart->phone = $cart->cust_ref = $cart->delivery_address = '';
-			$cart->ship_via = 0;
 			$cart->deliver_to = '';
 			$cart->prep_amount = 0;
 		}
@@ -285,10 +285,11 @@ function copy_to_cart()
 		$cart->deliver_to = $_POST['deliver_to'];
 		$cart->delivery_address = $_POST['delivery_address'];
 		$cart->phone = $_POST['phone'];
-		$cart->ship_via = $_POST['ship_via'];
 		if (!$cart->trans_no || ($cart->trans_type == ST_SALESORDER && !$cart->is_started()))
 			$cart->prep_amount = input_num('prep_amount', 0);
 	}
+
+	$cart->ship_via = $_POST['ship_via'];
 	$cart->Location = $_POST['Location'];
 	$cart->freight_cost = input_num('freight_cost');
 	if (isset($_POST['email']))
@@ -389,8 +390,8 @@ function can_process() {
 		display_error(_("This document cannot be processed because there is insufficient quantity for items marked."));
 		return false;
 	}
-	if ($_SESSION['Items']->payment_terms['cash_sale'] == 0) {
-		if (!$_SESSION['Items']->is_started() && ($_SESSION['Items']->payment_terms['days_before_due'] == -1) && ((input_num('prep_amount')<=0) ||
+	if ($_SESSION['Items']->payment_terms['type'] != PTT_CASH) {
+		if (!$_SESSION['Items']->is_started() && ($_SESSION['Items']->payment_terms['type'] == PTT_PREPAY) && ((input_num('prep_amount')<=0) ||
 			input_num('prep_amount')>$_SESSION['Items']->get_trans_total())) {
 			display_error(_("Pre-payment required have to be positive and less than total amount."));
 			set_focus('prep_amount');
@@ -408,10 +409,7 @@ function can_process() {
 			return false;
 		}
 
-		if ($_POST['freight_cost'] == "")
-			$_POST['freight_cost'] = price_format(0);
-
-		if (!check_num('freight_cost',0)) {
+		if (isset($_POST['freight_cost']) && !check_num('freight_cost',0)) {
 			display_error(_("The shipping cost entered is expected to be numeric."));
 			set_focus('freight_cost');
 			return false;
@@ -454,7 +452,7 @@ function can_process() {
 		return false;
 	}
 
-	if ($_SESSION['Items']->payment_terms['cash_sale'] && 
+	if ($_SESSION['Items']->payment_terms['type'] == PTT_CASH && 
 		($_SESSION['Items']->trans_type == ST_CUSTDELIVERY || $_SESSION['Items']->trans_type == ST_SALESINVOICE)) 
 		$_SESSION['Items']->due_date = $_SESSION['Items']->document_date;
 	return true;
@@ -472,7 +470,7 @@ if (isset($_POST['ProcessOrder']) && can_process()) {
 	$modified = ($_SESSION['Items']->trans_no != 0);
 	$so_type = $_SESSION['Items']->so_type;
 
-	$ret = $_SESSION['Items']->write(1);
+	$ret = write_sales_trans($_SESSION['Items'], 1);
 	if ($ret == -1)
 	{
 		display_error(_("The entered reference is already in use."));
@@ -666,7 +664,7 @@ function create_cart($type, $trans_no)
 		$doc->trans_no = 0;
 		$doc->document_date = new_doc_date();
 		if ($type == ST_SALESINVOICE) {
-			$doc->due_date = get_invoice_duedate($doc->payment, $doc->document_date);
+			$doc->due_date = get_payment_due_date($doc->payment, $doc->document_date);
 			$doc->pos = get_sales_point(user_pos());
 		} else
 			$doc->due_date = $doc->document_date;

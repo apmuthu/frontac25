@@ -33,14 +33,11 @@ include_once($path_to_root . "/sales/includes/db/customers_db.inc");
 // $amount is in CUSTOMER'S currency
 
 function add_gl_trans_customer($type, $type_no, $date_, $account, $dimension, $dimension2,
-	$amount, $customer_id, $err_msg="", $rate=0)
+	$amount, $customer_id, $rate=0)
 {
-	if ($err_msg == "")
-		$err_msg = "The customer GL transaction could not be inserted";
-
 	return add_gl_trans($type, $type_no, $date_, $account, $dimension, $dimension2, "", $amount,
 		get_customer_currency($customer_id),
-		PT_CUSTOMER, $customer_id, $err_msg, $rate);
+		PT_CUSTOMER, $customer_id, $rate);
 }
 
 //----------------------------------------------------------------------------------------
@@ -271,10 +268,9 @@ function read_sales_trans($doc_type, $trans_no, &$cart)
 		$result = get_customer_trans_details($doc_type,$trans_no);
 		if (db_num_rows($result) > 0) {
 			for($line_no=0; $myrow = db_fetch($result); $line_no++)	{
-				$cart->line_items[$line_no] = new line_details(
-					$myrow["stock_id"],$myrow["quantity"],
+				$cart->add_to_cart($line_no, $myrow["stock_id"],$myrow["quantity"],
 					$myrow["unit_price"], $myrow["discount_percent"],
-					$myrow["qty_done"], $myrow["standard_cost"],
+					$myrow["qty_done"], $myrow["unit_cost"],
 					$myrow["StockDescription"],$myrow["id"], $myrow["debtor_trans_no"],
 					@$myrow["src_id"]);
 			}
@@ -378,5 +374,174 @@ function get_sales_child_documents($trans_type, $trans_no)
 		WHERE type=".get_child_type($trans_type)." AND trans_no IN(". implode(',', array_values($childs)).")";
 
 	return db_query($sql,"The related credit notes could not be retreived");
+}
+
+//-------------------------------- Backend interfaces -------------------------------------
+
+
+function write_sales_trans($cart, $policy = 0)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+	$result = $cart->write($policy);
+	commit_transaction();
+	return $result;
+}
+
+function save_cust_payment($cart, $customer_id, $branch_id,
+		$bank_account, $trans_date, $ref, $amount, $memo, $charge, $bank_amount)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+
+	$discount = 0;
+	foreach($cart->allocs as $alloc)
+		if ($alloc->discount_confirmed)
+			$discount += $alloc->early_discount*$alloc->amount;
+
+	$payment_no = write_customer_payment($cart->trans_no, $customer_id, $branch_id,
+		$bank_account, $trans_date, $ref, $amount, $discount, $memo, 0, $charge, $bank_amount);
+
+	$cart->trans_no = $payment_no;
+	$cart->date_ = $trans_date;
+	$cart->write();
+
+	commit_transaction();
+	return $payment_no;
+}
+
+function create_recurrent_invoices($id, $from, $to, $date, $memo)
+{
+	/*
+		whole invoiced time is <begin, end>
+		invoices are issued _after_ invoiced period is gone, eg:
+		begin 1.1
+		end   31.3
+		period:    invoice ready for issue since:
+		1.1-31.1 -  1.2
+		1.2-28.2 -  1.3
+		1.3-31.3 -  1.4
+		In example above, when end is set to 1.4 will generate additional invoice on 1.5 !
+	*/
+
+	$myrow = get_recurrent_invoice($id);
+
+	$invs = array();
+	if (recurrent_invoice_ready($id, $date))
+	{
+
+		begin_transaction(__FUNCTION__, func_get_args());
+			if ($myrow['debtor_no'] == 0)
+			{
+				$cust = get_cust_branches_from_group($myrow['group_no']);
+				while ($row = db_fetch($cust))
+				{
+					$invs[] = create_template_invoice($row['debtor_no'], $row['branch_code'], $myrow['order_no'], $myrow['id'],
+						$date, $from, $to, $memo);
+				}
+			}
+			else
+			{
+				$invs[] = create_template_invoice($myrow['debtor_no'], $myrow['group_no'], $myrow['order_no'], $myrow['id'],
+					$date, $from, $to, $memo);
+			}
+		commit_transaction();
+	}
+	return $invs;
+}
+
+function write_recurrent_invoice($invoice_id, $description, $order_no, $debtor_no, $group_no,
+	$days, $monthly, $begin, $end, $last_sent)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+
+	   	if ($invoice_id != -1) 
+    	{
+    		update_recurrent_invoice($invoice_id, $description, $order_no, $debtor_no, $group_no,
+				$days, $monthly, $begin, $end);
+    		if (isset($last_sent))
+				update_last_sent_recurrent_invoice($invoice_id, $last_sent);
+    	} 
+    	else 
+    	{
+    		add_recurrent_invoice($description, $order_no, $debtor_no, $group_no,
+    			$days, $monthly, $begin, $end);
+    	}
+	commit_transaction();
+}
+
+function write_customer($customer_id, $name, $ref, $address, $tax_id, $curr_code, $dim1, $dim2, $credit_status,
+	 $payment_terms, $discount, $credit_limit, $sales_type, $notes, $inactive, $salesman, $area, 
+	 $tax_group, $location, $ship_via, $bank_account, $phone, $phone2, $fax, $email)
+{
+	global $SysPrefs;
+
+	begin_transaction(__FUNCTION__, func_get_args());
+
+	if ($customer_id) {
+		update_customer($customer_id, $name, $ref, $address, $tax_id, $curr_code, $dim1, $dim2, $credit_status,
+			 $payment_terms, $discount/100, $credit_limit, $sales_type, $notes, $inactive);
+
+		update_record_status($customer_id, $inactive, 'debtors_master', 'debtor_no');
+
+	} else {
+		add_customer($name, $ref, $address,	$tax_id, $curr_code, $dim1, $dim2, $credit_status, $payment_terms,
+			$discount / 100, $credit_limit, $sales_type, $notes);
+
+		$customer_id = db_insert_id();
+
+		if (isset($SysPrefs->auto_create_branch) && $SysPrefs->auto_create_branch == 1)
+		{
+    		add_branch($customer_id, $name, $ref, $address, $salesman, $area, $tax_group, '',
+               	get_company_pref('default_sales_discount_act'),
+               	get_company_pref('debtors_act'),
+               	get_company_pref('default_prompt_payment_act'),
+                $location, $address, 0, $ship_via, $notes, $bank_account);
+
+   	    	$selected_branch = db_insert_id();
+
+			add_crm_person($ref, $name, '', $address, $phone, $phone2, $fax, $email, '', '');
+
+			$pers_id = db_insert_id();
+			add_crm_contact('cust_branch', 'general', $selected_branch, $pers_id);
+
+			add_crm_contact('customer', 'general', $customer_id, $pers_id);
+		}
+	}
+	commit_transaction();
+
+	return $customer_id;
+}
+
+function write_cust_branch($id, $customer_id, $name, $ref, $br_address, $salesman, $area, $tax_group,
+	$sales_act, $discount_act, $ar_act, $payment_discount_act, $location, $post_address, $group_no, $ship_via, $notes, $bank_act,
+	$contact_name, $phone, $phone2,$fax, $email, $lang)
+{
+
+	begin_transaction(__FUNCTION__, func_get_args());
+
+	if ($id !== 0) {
+				update_branch($customer_id, $id, $name, $ref, $br_address, $salesman, $area, $tax_group, $sales_act,
+					$discount_act, $ar_act, $discount_act, $location, $post_address, $group_no,
+					$ship_via, $notes, $bank_act);
+	} else {
+				add_branch($customer_id, $name, $ref, $br_address, $salesman, $area, $tax_group, $sales_act,
+					$discount_act, $ar_act, $payment_discount_act, $location, $post_address, $group_no,
+					$ship_via, $notes, $bank_act);
+
+				$branch_id = db_insert_id();
+
+				add_crm_person($contact_name, $contact_name, '', $post_address, $phone, $phone2, $fax, $email, $lang, '');
+
+				add_crm_contact('cust_branch', 'general', $branch_id, db_insert_id());
+
+	}
+	commit_transaction();
+}
+
+function write_cust_allocation($cart)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+		$result = $cart->write();
+	commit_transaction();
+	return $result;
 }
 

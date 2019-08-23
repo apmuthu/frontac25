@@ -14,7 +14,7 @@ function write_supp_payment($trans_no, $supplier_id, $bank_account,
 {
 	global $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	$args = func_get_args(); while (count($args) < 10) $args[] = 0;
 	$args = (object)array_combine(array('trans_no', 'supplier_id', 'bank_account', 'date_',
 		 'ref', 'bank_amount', 'supp_amount', 'supp_discount', 'memo_', 'bank_charge'), $args);
@@ -44,20 +44,20 @@ function write_supp_payment($trans_no, $supplier_id, $bank_account,
 
 	/* Create a supp_trans entry for the supplier payment */
 	$payment_id = write_supp_trans(ST_SUPPAYMENT, 0, $supplier_id, $date_, $date_,
-		$ref, "", -$supp_amount, 0, -$supp_discount, "", $rate);
+		$ref, "", -$supp_amount, 0, -$supp_discount, $rate);
 
 	// Now debit creditors account with payment + discount
 
 	$total = 0;
     $supplier_accounts = get_supplier_accounts($supplier_id);
 	$total += add_gl_trans_supplier(ST_SUPPAYMENT, $payment_id, $date_, $supplier_accounts["payable_account"], 0, 0,
-		$supp_amount + $supp_discount, $supplier_id, "", $rate);
+		$supp_amount + $supp_discount, $supplier_id, $rate);
 
 	// Now credit discount received account with discounts
 	if ($supp_discount != 0)
 	{
 		$total += add_gl_trans_supplier(ST_SUPPAYMENT, $payment_id, $date_, $supplier_accounts["payment_discount_account"], 0, 0,
-			-$supp_discount, $supplier_id, "", $rate);
+			-$supp_discount, $supplier_id, $rate);
 	}
 
 	if ($bank_charge != 0)
@@ -80,7 +80,7 @@ function write_supp_payment($trans_no, $supplier_id, $bank_account,
 
    /*now enter the bank_trans entry */
 	add_bank_trans(ST_SUPPAYMENT, $payment_id, $bank_account, $ref,
-		$date_, -($bank_amount + $bank_charge), PT_SUPPLIER, $supplier_id);
+		$date_, -$bank_amount, -$bank_charge, PT_SUPPLIER, $supplier_id);
 
 	add_comments(ST_SUPPAYMENT, $payment_id, $date_, $memo_);
 
@@ -98,7 +98,7 @@ function write_supp_payment($trans_no, $supplier_id, $bank_account,
 
 function void_supp_payment($type, $type_no)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prevoid($type, $type_no);
 
 	void_bank_trans($type, $type_no, true);

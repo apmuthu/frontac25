@@ -58,13 +58,6 @@ function can_process()
 		return false;		
 	} 
 	
-	if (!check_num('pymt_discount', 0, 100)) 
-	{
-		display_error(_("The payment discount must be numeric and is expected to be less than 100% and greater than or equal to 0."));
-		set_focus('pymt_discount');
-		return false;		
-	} 
-	
 	if (!check_num('discount', 0, 100)) 
 	{
 		display_error(_("The discount percentage must be numeric and is expected to be less than 100% and greater than or equal to 0."));
@@ -84,48 +77,23 @@ function handle_submit(&$selected_id)
 	if (!can_process())
 		return;
 		
+
+	$_POST['customer_id'] = write_customer(get_post('customer_id'), get_post('CustName'), get_post('cust_ref'), get_post('address'),
+		get_post('tax_id'), get_post('curr_code'), get_post('dimension_id'), get_post('dimension2_id'),
+		get_post('credit_status'), get_post('payment_terms'), input_num('discount'),
+		input_num('credit_limit'), get_post('sales_type'), get_post('notes'), @$_POST['inactive'], get_post('salesman'),
+		get_post('area'), get_post('tax_group_id'), get_post('location'), get_post('ship_via'), 
+		get_post('bank_account'), get_post('phone'), get_post('phone2'), get_post('fax'), get_post('email'));
+
 	if ($selected_id) 
 	{
-		update_customer($_POST['customer_id'], $_POST['CustName'], $_POST['cust_ref'], $_POST['address'],
-			$_POST['tax_id'], $_POST['curr_code'], $_POST['dimension_id'], $_POST['dimension2_id'],
-			$_POST['credit_status'], $_POST['payment_terms'], input_num('discount') / 100, input_num('pymt_discount') / 100,
-			input_num('credit_limit'), $_POST['sales_type'], $_POST['notes']);
-
-		update_record_status($_POST['customer_id'], $_POST['inactive'],
-			'debtors_master', 'debtor_no');
-
 		$Ajax->activate('customer_id'); // in case of status change
 		display_notification(_("Customer has been updated."));
 	} 
 	else 
 	{ 	//it is a new customer
 
-		begin_transaction();
-		add_customer($_POST['CustName'], $_POST['cust_ref'], $_POST['address'],
-			$_POST['tax_id'], $_POST['curr_code'], $_POST['dimension_id'], $_POST['dimension2_id'],
-			$_POST['credit_status'], $_POST['payment_terms'], input_num('discount') / 100, input_num('pymt_discount') / 100,
-			input_num('credit_limit'), $_POST['sales_type'], $_POST['notes']);
-
-		$selected_id = $_POST['customer_id'] = db_insert_id();
-         
-		if (isset($SysPrefs->auto_create_branch) && $SysPrefs->auto_create_branch == 1)
-		{
-        	add_branch($selected_id, $_POST['CustName'], $_POST['cust_ref'],
-                $_POST['address'], $_POST['salesman'], $_POST['area'], $_POST['tax_group_id'], '',
-                get_company_pref('default_sales_discount_act'), get_company_pref('debtors_act'), get_company_pref('default_prompt_payment_act'),
-                $_POST['location'], $_POST['address'], 0, $_POST['ship_via'], $_POST['notes'], $_POST['bank_account']);
-                
-        	$selected_branch = db_insert_id();
-        
-			add_crm_person($_POST['cust_ref'], $_POST['CustName'], '', $_POST['address'], 
-				$_POST['phone'], $_POST['phone2'], $_POST['fax'], $_POST['email'], '', '');
-
-			$pers_id = db_insert_id();
-			add_crm_contact('cust_branch', 'general', $selected_branch, $pers_id);
-
-			add_crm_contact('customer', 'general', $selected_id, $pers_id);
-		}
-		commit_transaction();
+		$selected_id = get_post('customer_id');
 
 		display_notification(_("A new customer has been added."));
 
@@ -200,7 +168,7 @@ function customer_settings($selected_id)
 			$_POST['credit_status']  = -1;
 			$_POST['payment_terms']  = $_POST['notes']  = '';
 
-			$_POST['discount']  = $_POST['pymt_discount'] = percent_format(0);
+			$_POST['discount']  = percent_format(0);
 			$_POST['credit_limit']	= price_format($SysPrefs->default_credit_limit());
 		}
 	}
@@ -219,7 +187,6 @@ function customer_settings($selected_id)
 		$_POST['credit_status']  = $myrow["credit_status"];
 		$_POST['payment_terms']  = $myrow["payment_terms"];
 		$_POST['discount']  = percent_format($myrow["discount"] * 100);
-		$_POST['pymt_discount']  = percent_format($myrow["pymt_discount"] * 100);
 		$_POST['credit_limit']	= price_format($myrow["credit_limit"]);
 		$_POST['notes']  = $myrow["notes"];
 		$_POST['inactive'] = $myrow["inactive"];
@@ -265,7 +232,6 @@ function customer_settings($selected_id)
 	table_section_title(_("Sales"));
 
 	percent_row(_("Discount Percent:"), 'discount', $_POST['discount']);
-	percent_row(_("Prompt Payment Discount Percent:"), 'pymt_discount', $_POST['pymt_discount']);
 	amount_row(_("Credit Limit:"), 'credit_limit', $_POST['credit_limit']);
 
 	payment_terms_list_row(_("Payment Terms:"), 'payment_terms', $_POST['payment_terms']);
@@ -294,7 +260,7 @@ function customer_settings($selected_id)
 	{
 		table_section_title(_("Branch"));
 		locations_list_row(_("Default Inventory Location:"), 'location');
-		shippers_list_row(_("Default Shipping Company:"), 'ship_via');
+		shipping_methods_list_row(_("Default Shipping:"), 'ship_via');
 		sales_areas_list_row( _("Sales Area:"), 'area', null);
 		tax_groups_list_row(_("Tax Group:"), 'tax_group_id', null);
 	}

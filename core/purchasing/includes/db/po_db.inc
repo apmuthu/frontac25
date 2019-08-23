@@ -15,13 +15,12 @@ function get_supplier_details_to_order(&$order, $supplier_id)
 {
 	$sql = "SELECT curr_code, supp_name, tax_group_id, supp.tax_included, dimension_id, dimension2_id,
 			supp.credit_limit - Sum((ov_amount + ov_gst + ov_discount)) as cur_credit,
-				terms.terms, terms.days_before_due, terms.day_in_following_month
+				terms.*, tg.tax_area
 		FROM ".TB_PREF."suppliers supp
 			 LEFT JOIN ".TB_PREF."supp_trans trans ON supp.supplier_id = trans.supplier_id
-			 LEFT JOIN ".TB_PREF."payment_terms terms ON supp.payment_terms=terms.terms_indicator
-		WHERE supp.supplier_id = ".db_escape($supplier_id)."
-		GROUP BY
-			  supp.supp_name";
+			 LEFT JOIN ".TB_PREF."payment_terms terms ON supp.payment_terms=terms.id
+			 LEFT JOIN ".TB_PREF."tax_groups tg ON supp.tax_group_id=tg.id
+		WHERE supp.supplier_id = ".db_escape($supplier_id);
 
 	$result = db_query($sql, "The supplier details could not be retreived");
 	$myrow = db_fetch($result);
@@ -29,8 +28,11 @@ function get_supplier_details_to_order(&$order, $supplier_id)
 	$order->credit = $myrow["cur_credit"];
 	$order->terms = array( 
 		'description' => $myrow['terms'],
-		'days_before_due' => $myrow['days_before_due'], 
-		'day_in_following_month' => $myrow['day_in_following_month'] );
+		'type' => $myrow['type'], 
+		'days' => $myrow['days'],
+		'early_discount' => $myrow['early_discount'],
+		'early_days' => $myrow['early_days'],
+	);
 
 	$_POST['supplier_id'] = $supplier_id;
 	$_POST['supplier_name'] = $myrow["supp_name"];
@@ -39,7 +41,7 @@ function get_supplier_details_to_order(&$order, $supplier_id)
 	$_POST['dimension2'] = $myrow["dimension2_id"];
 
 	$order->set_supplier($supplier_id, $myrow["supp_name"], $myrow["curr_code"], 
-		$myrow["tax_group_id"], $myrow["tax_included"]);
+		$myrow["tax_group_id"], $myrow["tax_included"], $myrow["tax_area"]);
 }
 
 //----------------------------------------------------------------------------------------
@@ -48,7 +50,7 @@ function delete_po($po)
 {
 	global $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prevoid($po, ST_PURCHORDER);
 	$sql = "DELETE FROM ".TB_PREF."purch_orders WHERE order_no=".db_escape($po);
 	db_query($sql, "The order header could not be deleted");
@@ -66,15 +68,15 @@ function add_po(&$po_obj)
 {
 	global $Refs;
 
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prewrite($po_obj, ST_PURCHORDER);
 
      /*Insert to purchase order header record */
      $sql = "INSERT INTO ".TB_PREF."purch_orders (supplier_id, Comments, ord_date, reference, 
-     	requisition_no, into_stock_location, delivery_address, total, tax_included, prep_amount) VALUES(";
+     	supp_reference, into_stock_location, delivery_address, total, tax_included, prep_amount) VALUES(";
      $sql .= db_escape($po_obj->supplier_id) . "," .
          db_escape($po_obj->Comments) . ",'" .
-         date2sql($po_obj->orig_order_date) . "', " .
+         date2sql($po_obj->tran_date) . "', " .
 		 db_escape($po_obj->reference) . ", " .
          db_escape($po_obj->supp_ref) . ", " .
          db_escape($po_obj->Location) . ", " .
@@ -98,12 +100,12 @@ function add_po(&$po_obj)
 		db_escape($po_line->price) . ", " .
 		db_escape($po_line->quantity). ")";
 		db_query($sql, "One of the purchase order detail records could not be inserted");
-		$po_obj->line_items[$line_no]->po_detail_rec = db_insert_id();
+		$po_obj->line_items[$line_no]->po_item_id = db_insert_id();
      }
 
 	$Refs->save(ST_PURCHORDER, $po_obj->order_no, $po_obj->reference);
 
-	add_audit_trail(ST_PURCHORDER, $po_obj->order_no, $po_obj->orig_order_date);
+	add_audit_trail(ST_PURCHORDER, $po_obj->order_no, $po_obj->tran_date);
 	hook_db_postwrite($po_obj, ST_PURCHORDER);
 	commit_transaction();
 
@@ -114,14 +116,14 @@ function add_po(&$po_obj)
 
 function update_po(&$po_obj)
 {
-	begin_transaction();
+	begin_transaction(__FUNCTION__, func_get_args());
 	hook_db_prewrite($po_obj, ST_PURCHORDER);
 
     /*Update the purchase order header with any changes */
     $sql = "UPDATE ".TB_PREF."purch_orders SET Comments=" . db_escape($po_obj->Comments) . ",
-		requisition_no= ". db_escape( $po_obj->supp_ref). ",
+		supp_reference= ". db_escape( $po_obj->supp_ref). ",
 		into_stock_location=" . db_escape($po_obj->Location). ",
-		ord_date='" . date2sql($po_obj->orig_order_date) . "',
+		ord_date='" . date2sql($po_obj->tran_date) . "',
 		delivery_address=" . db_escape($po_obj->delivery_address).",
 		total=". db_escape($po_obj->get_trans_total()).",
 		prep_amount=". db_escape($po_obj->prep_amount).",
@@ -138,7 +140,7 @@ function update_po(&$po_obj)
     {
     	$sql = "INSERT INTO ".TB_PREF."purch_order_details (po_detail_item, order_no, item_code, 
     		description, delivery_date, unit_price, quantity_ordered, quantity_received) VALUES ("
-			.db_escape($po_line->po_detail_rec ? $po_line->po_detail_rec : 0). ","
+			.db_escape($po_line->po_item_id ? $po_line->po_item_id : 0). ","
 			.$po_obj->order_no . ","
 			.db_escape($po_line->stock_id). ","
 			.db_escape($po_line->item_description). ",'"
@@ -149,7 +151,7 @@ function update_po(&$po_obj)
 		db_query($sql, "One of the purchase order detail records could not be updated");
     }
 
-	reallocate_payments($po_obj->order_no, ST_PURCHORDER, $po_obj->orig_order_date, $po_obj->get_trans_total(), $po_obj->prepayments, $po_obj->supplier_id);
+	reallocate_payments($po_obj->order_no, ST_PURCHORDER, $po_obj->tran_date, $po_obj->get_trans_total(), $po_obj->prepayments, $po_obj->supplier_id);
 
 	add_audit_trail($po_obj->trans_type, $po_obj->order_no, Today(), _("Updated."));
 	hook_db_postwrite($po_obj, ST_PURCHORDER);
@@ -162,9 +164,10 @@ function update_po(&$po_obj)
 
 function read_po_header($order_no, &$order)
 {
-    	$sql = "SELECT po.*, supplier.*, loc.location_name 
+    	$sql = "SELECT po.*, tg.tax_area, supplier.*, loc.location_name 
 		FROM ".TB_PREF."purch_orders po,"
-			.TB_PREF."suppliers supplier,"
+			.TB_PREF."suppliers supplier
+			LEFT JOIN ".TB_PREF."tax_groups tg ON supplier.tax_group_id=tg.id,"
 			.TB_PREF."locations loc
 		WHERE po.supplier_id = supplier.supplier_id
 		AND loc.loc_code = into_stock_location
@@ -181,14 +184,14 @@ function read_po_header($order_no, &$order)
       	$order->order_no = $order_no;
 
       	$order->set_supplier($myrow["supplier_id"], $myrow["supp_name"], $myrow["curr_code"],
-      		$myrow['tax_group_id'], $myrow["tax_included"]);
+      		$myrow['tax_group_id'], $myrow["tax_included"], $myrow["tax_area"]);
 
 		$order->credit = get_current_supp_credit($order->supplier_id);
 
-      	$order->orig_order_date = sql2date($myrow["ord_date"]);
+      	$order->tran_date = sql2date($myrow["ord_date"]);
       	$order->Comments = $myrow["comments"];
       	$order->Location = $myrow["into_stock_location"];
-      	$order->supp_ref = $myrow["requisition_no"];
+      	$order->supp_ref = $myrow["supp_reference"];
       	$order->reference = $myrow["reference"];
       	$order->delivery_address = $myrow["delivery_address"];
       	$order->alloc = $myrow["alloc"];
@@ -211,7 +214,8 @@ function read_po_items($order_no, &$order, $open_items_only=false)
 	$sql = "SELECT poline.*, units
 		FROM ".TB_PREF."purch_order_details poline
 			LEFT JOIN ".TB_PREF."stock_master item	ON poline.item_code=item.stock_id
-		WHERE order_no =".db_escape($order_no);
+		WHERE order_no =".db_escape($order_no)
+			." AND poline.quantity_ordered!=0";
 
     if ($open_items_only)
  		$sql .= " AND (poline.quantity_ordered > poline.quantity_received) ";
@@ -230,21 +234,12 @@ function read_po_items($order_no, &$order, $open_items_only=false)
         		if ($data['supplier_description'] != "")
         			$myrow['description'] = $data['supplier_description'];
         	}		
-            if (is_null($myrow["units"]))
-            {
-		       	$units = "";
-            }
-            else
-            {
-                $units = $myrow["units"];
-            }
 
-            if ($order->add_to_order($order->lines_on_order, $myrow["item_code"],
-            	$myrow["quantity_ordered"],$myrow["description"],
-            	$myrow["unit_price"],$units, sql2date($myrow["delivery_date"]),
-            	$myrow["qty_invoiced"], $myrow["quantity_received"])) {
-				$order->line_items[$order->lines_on_order-1]->po_detail_rec = $myrow["po_detail_item"];
-			}
+           	$order->add_to_order($myrow["item_code"],
+           		$myrow["quantity_ordered"],$myrow["description"],
+            	$myrow["unit_price"], sql2date($myrow["delivery_date"]),
+   	        	$myrow["qty_invoiced"], $myrow["quantity_received"],
+   	        	$myrow["quantity_ordered"], 0, $myrow["po_detail_item"], $myrow["std_cost_unit"]);
         } /* line po from purchase order details */
     } //end of checks on returned data set
 }
@@ -290,7 +285,7 @@ function get_sql_for_po_search_completed($from, $to, $supplier_id=ALL_TEXT, $loc
 		porder.reference, 
 		supplier.supp_name, 
 		location.location_name,
-		porder.requisition_no, 
+		porder.supp_reference, 
 		porder.ord_date, 
 		supplier.curr_code, 
 		Sum(line.unit_price*line.quantity_ordered) AS OrderValue,
@@ -352,7 +347,7 @@ function get_sql_for_po_search($from, $to, $supplier_id=ALL_TEXT, $location=ALL_
 		porder.reference,
 		supplier.supp_name, 
 		location.location_name,
-		porder.requisition_no, 
+		porder.supp_reference, 
 		porder.ord_date,
 		supplier.curr_code,
 		Sum(line.unit_price*line.quantity_ordered) AS OrderValue,

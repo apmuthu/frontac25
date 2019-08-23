@@ -12,6 +12,18 @@
 include_once($path_to_root . "/includes/prefs/sysprefs.inc");
 include_once($path_to_root . "/inventory/includes/inventory_db.inc");
 
+/*
+	FIXME: This class currently handles three different types of transactions:
+	. simple inventory transactions working on quantities:
+		ST_INVADJUST, ST_LOCTRANSFER, ST_MANUISSUE
+	. balanced low level GL transactions, working on amounts:
+		ST_JOURNAL, ST_COSTUPDATE, used also in purchase invoice costing 
+	. unbalanced bank transaction:
+		ST_BANKPAYMENT, ST_BANK_DEPOSIT
+
+	No reason to keep all this in the same class.
+*/
+
 class items_cart
 {
 	var $trans_type;
@@ -37,8 +49,16 @@ class items_cart
 	var $vat_category;
 
 	var $tax_info;	// tax info for the GL transaction
+	var $reconcile_date;
 
 	var $fixed_asset;
+
+	// bank transaction related
+	var $bank_act;
+	var $person_type_id;
+	var $person_id;
+	var $person_detail_id;
+	var $settled_amount;
 
 	function __construct($type, $trans_no=0)
 	{
@@ -52,13 +72,13 @@ class items_cart
 
 	// --------------- line item functions
 
-	function add_to_cart($line_no, $stock_id, $qty, $standard_cost, $description=null)
+	function add_to_cart($line_no, $stock_id, $qty, $unit_cost, $description=null)
 	{
 
 		if (isset($stock_id) && $stock_id != "" && isset($qty))
 		{
 			$this->line_items[$line_no] = new line_item($stock_id, $qty,
-				$standard_cost, $description);
+				$unit_cost, $description);
 			return true;
 		}
 		else
@@ -79,10 +99,10 @@ class items_cart
 		return null;
 	}
 
-	function update_cart_item($line_no, $qty, $standard_cost)
+	function update_cart_item($line_no, $qty, $unit_cost)
 	{
 		$this->line_items[$line_no]->quantity = $qty;
-		$this->line_items[$line_no]->standard_cost = $standard_cost;
+		$this->line_items[$line_no]->unit_cost = $unit_cost;
 	}
 
 	function remove_from_cart($line_no)
@@ -367,7 +387,7 @@ class items_cart
 				$gl->date = $this->tran_date;
 
 			$total_gl += add_gl_trans($this->trans_type, $this->order_id, $gl->date, $gl->code_id, $gl->dimension_id, $gl->dimension2_id, 
-				$gl->reference,	$gl->amount, $this->currency, $gl->person_type_id, $gl->person_id, "", $this->rate);
+				$gl->reference,	$gl->amount, $this->currency, $gl->person_type_id, $gl->person_id, $this->rate);
 
 			// post to first found bank account using given gl acount code.
 			$is_bank_to = is_bank_account($gl->code_id);
@@ -397,8 +417,7 @@ class items_cart
 		// update bank ledger if used
 		foreach($bank_trans as $bank_id => $amount)
    			add_bank_trans($this->trans_type, $this->order_id, $bank_id, $this->reference,
-				$this->tran_date, $amount, 0, "", $this->currency,
- 				"Cannot insert a destination bank transaction");
+				$this->tran_date, $amount, 0, 0, "", $this->currency);
 
 		// add AP/AR for journal transaction
 		if ($this->trans_type == ST_JOURNAL)
@@ -446,7 +465,7 @@ class items_cart
 				add_trans_tax_details($this->trans_type, $this->order_id,
 					$tax_id, $this->tax_info['rate'][$tax_id], 0, $tax_nominal, $net, $this->rate,
 					$this->tran_date,
-					$this->source_ref, $reg);
+					$this->source_ref, $reg, $this->tax_info['tax_group'], $this->tax_info['tax_category']);
 			}
 		}
 	}
@@ -463,9 +482,9 @@ class line_item
 
 	var $quantity;
 	var $price;
-	var $standard_cost;
+	var $unit_cost;
 
-	function __construct($stock_id, $qty, $standard_cost=null, $description=null)
+	function __construct($stock_id, $qty, $unit_cost=null, $description=null)
 	{
 		$item_row = get_item($stock_id);
 
@@ -480,10 +499,10 @@ class line_item
 		else
 			$this->item_description = $description;
 
-		if ($standard_cost == null)
-			$this->standard_cost = $item_row["purchase_cost"];
+		if ($unit_cost == null)
+			$this->unit_cost = $item_row["purchase_cost"];
 		else
-			$this->standard_cost = $standard_cost;
+			$this->unit_cost = $unit_cost;
 
 		$this->stock_id = $stock_id;
 		$this->quantity = $qty;

@@ -14,45 +14,46 @@ function focus_alloc(i) {
 }
 
 function blur_alloc(i) {
-		var change = get_amount(i.name);
-		
-		if (i.name != 'amount' && i.name != 'charge' && i.name != 'discount')
-			change = Math.min(change, get_amount('maxval'+i.name.substr(6), 1))
+		var id = i.name.substr(6)
+		var unallocated = get_amount('un_allocated'+id);
 
-		price_format(i.name, change, user.pdec);
-		if (i.name != 'amount' && i.name != 'charge') {
-			if (change<0) change = 0;
-			change = change-i.getAttribute('_last');
-			if (i.name == 'discount') change = -change;
+		var cur = Math.max(Math.min(get_amount(i.name), unallocated), 0);
 
-			var total = get_amount('amount')+change;
-			price_format('amount', total, user.pdec, 0);
-		}
+		price_format(i.name, cur, user.pdec);
+		price_format('left'+id, unallocated-cur, user.pdec, 1);
+		update_totals()
+}
+
+function update_totals() {
+	var amount = 0;
+	var discount = 0;
+
+	for (var i=0; i<docs.length; i++) {
+		amount += get_amount('amount'+docs[i])
+		if (document.getElementsByName('early_disc'+docs[i])[0].checked 
+			&& (get_amount('un_allocated'+docs[i]) == get_amount('amount'+docs[i])))
+				discount += get_amount('early_disc'+docs[i]);
+	}
+	console.info(discount);
+	price_format('amount', amount-discount, user.pdec);
+	price_format('discount', discount, user.pdec, 1);
+	
 }
 
 function allocate_all(doc) {
-	var amount = get_amount('amount'+doc);
 	var unallocated = get_amount('un_allocated'+doc);
-	var total = get_amount('amount');
-	var left = 0;
-	total -=  (amount-unallocated);
-	left -= (amount-unallocated);
-	amount = unallocated;
-	if(left<0) {
-		total  += left;
-		amount += left;
-		left = 0;
-	}
-	price_format('amount'+doc, amount, user.pdec);
-	price_format('amount', total, user.pdec);
+	price_format('amount'+doc, unallocated, user.pdec);
+	price_format('left'+doc, 0, user.pdec, 1);
+	update_totals();
 }
 
 function allocate_none(doc) {
-	amount = get_amount('amount'+doc);
-	total = get_amount('amount');
+	var unallocated = get_amount('un_allocated'+doc);
 	price_format('amount'+doc, 0, user.pdec);
-	price_format('amount', total-amount, user.pdec);
+	price_format('left'+doc, unallocated, user.pdec, 1);
+	update_totals();
 }
+
 
 var allocations = {
 	'.amount': function(e) {
@@ -69,6 +70,11 @@ var allocations = {
 			e.onfocus = function() {
 				focus_alloc(this);
 			};
+		}
+	},
+	'.check':function(e) {
+		e.onclick = function() {
+			update_totals();
 		}
 	}
 }

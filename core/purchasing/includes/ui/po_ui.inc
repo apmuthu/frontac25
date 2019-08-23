@@ -18,7 +18,7 @@ function copy_from_cart()
 	$cart = &$_SESSION['PO'];
 
 	$_POST['supplier_id'] = $cart->supplier_id;
-	$_POST['OrderDate'] = $cart->orig_order_date;
+	$_POST['OrderDate'] = $cart->tran_date;
 	if ($cart->trans_type == ST_SUPPINVOICE)
 		$_POST['due_date'] = $cart->due_date;
     $_POST['supp_ref'] = $cart->supp_ref;
@@ -40,7 +40,7 @@ function copy_to_cart()
 	$cart = &$_SESSION['PO'];
 
 	$cart->supplier_id = $_POST['supplier_id'];	
-	$cart->orig_order_date = $_POST['OrderDate'];
+	$cart->tran_date = $_POST['OrderDate'];
 	if ($cart->trans_type == ST_SUPPINVOICE)
 	{
 		$cart->due_date = $_POST['due_date'];
@@ -64,7 +64,7 @@ function copy_to_cart()
 
 //---------------------------------------------------------------------------------------------------
 
-function create_new_po($trans_type, $trans_no)
+function create_cart($trans_type, $trans_no)
 {
 	global $Refs;
 
@@ -72,20 +72,28 @@ function create_new_po($trans_type, $trans_no)
 		unset ($_SESSION['PO']->line_items, $_SESSION['PO']);
 
 	$cart = new purch_order;
-	$_POST['OrderDate'] = new_doc_date();
-	if (!is_date_in_fiscalyear($_POST['OrderDate']))
-		$_POST['OrderDate'] = end_fiscalyear();
-	$cart->due_date = $cart->orig_order_date = $_POST['OrderDate'];
-
 	$cart->trans_type = $trans_type;
-	$cart->order_no = $trans_no;
-	/*read in all the selected order into the Items cart  */
-	if ($trans_no) {
-		read_po($trans_no, $cart);
+
+	if ($trans_type == ST_SUPPRECEIVE && $trans_no != 0) {
+		read_grn($trans_no, $cart);
+		foreach($cart->line_items as &$line) {
+			$line->qty_old = $line->quantity; // for concurrency checks
+			$line->qty_received -= $line->quantity;
+		}
+	} else {
 		$cart->order_no = $trans_no;
-	} else
-		$cart->reference = $Refs->get_next($trans_type, null,
-			array('supplier_id' => $cart->supplier_id, 'date' => get_post('OrderDate')));
+		$_POST['OrderDate'] = new_doc_date();
+		if (!is_date_in_fiscalyear($_POST['OrderDate']))
+			$_POST['OrderDate'] = end_fiscalyear();
+		$cart->due_date = $cart->tran_date = $_POST['OrderDate'];
+		/* read in all the selected order into the Items cart  */
+		if ($trans_no) {
+			read_po($trans_no, $cart);
+			$cart->order_no = $trans_no;
+		} else
+			$cart->reference = $Refs->get_next($trans_type, null,
+				array('supplier_id' => $cart->supplier_id, 'date' => get_post('OrderDate')));
+	}
 	$_SESSION['PO'] = &$cart;
 }
 
@@ -116,7 +124,8 @@ function display_po_header(&$order)
 	if ($order->supplier_id != get_post('supplier_id',-1)) {
 		$old_supp = $order->supplier_id;
 		get_supplier_details_to_order($order, $_POST['supplier_id']); 
-	    get_duedate_from_terms($order);
+	    $order->due_date = get_payment_due_date($order->terms, $order->tran_date);
+
 		$_POST['due_date'] = $order->due_date;
 
 		// supplier default price update
@@ -137,8 +146,8 @@ function display_po_header(&$order)
 		'OrderDate', '', true, 0, 0, 0, null, true);
 
 	if (isset($_POST['_OrderDate_changed'])) {
-		$order->orig_order_date = $_POST['OrderDate'];
-	    get_duedate_from_terms($order);
+		$order->tran_date = $_POST['OrderDate'];
+	    $order->due_date = get_payment_due_date($order->terms, $order->tran_date);
 	    $_POST['due_date'] = $order->due_date;
 		$Ajax->activate('due_date');
 	}
@@ -163,6 +172,8 @@ function display_po_header(&$order)
 
 	table_section(2);
 
+    label_row(_("Terms:"), $order->terms['description']);
+
 	if ($order->trans_type==ST_SUPPINVOICE)
 		date_row(_("Due Date:"), 'due_date', '', false, 0, 0, 0, null, true);
 
@@ -172,10 +183,9 @@ function display_po_header(&$order)
 		dimensions_list_row(_('Dimension').':', 'dimension', null, true, _('Default'), false, 1);
 	if (get_company_pref('use_dimension') == 2)
 		dimensions_list_row(_('Dimension 2').':', 'dimension2', null, true, _('Default'), false, 2);
-	locations_list_row(_("Receive Into:"), 'StkLocation', null, false, true, $order->fixed_asset); 
 
 	table_section(3);
-
+	locations_list_row(_("Receive Into:"), 'StkLocation', null, false, true, $order->fixed_asset); 
     if (!isset($_POST['StkLocation']) || $_POST['StkLocation'] == "" ||
     	isset($_POST['_StkLocation_update']) || !isset($_POST['delivery_address']) ||
     	$_POST['delivery_address'] == "")
@@ -275,11 +285,11 @@ function display_po_items(&$order, $editable=true)
 
 	label_row(_("Sub-total"), $display_sub_total, "colspan=$colspan align=right","align=right", 2);
 
-	$taxes = $order->get_taxes(input_num('freight_cost'));
+	$taxes = $order->get_taxes();
 	
 	$tax_total = display_edit_tax_items($taxes, $colspan, $order->tax_included, 2, $order->trans_type==ST_SUPPINVOICE);
 
-	$display_total = price_format(($total + input_num('freight_cost') + $tax_total));
+	$display_total = price_format(($total + $tax_total));
 
 	start_row();
 	label_cells(_("Amount Total"), $display_total, "colspan=$colspan align='right'","align='right'");
@@ -313,7 +323,7 @@ function display_po_summary(&$po, $is_self=false, $editable=false)
     }
 	end_row();
 	start_row();
-    label_cells(_("Date"), $po->orig_order_date, "class='tableheader2'");
+    label_cells(_("Date"), $po->tran_date, "class='tableheader2'");
 
     if ($editable)
     {
@@ -394,7 +404,7 @@ function po_item_controls(&$order, &$rowcounter, $line_no=-1)
 		if ($order->fixed_asset)
 			stock_purchasable_fa_list_cells(null, 'stock_id', null, false, true, false, true, $order->line_items);
 		else
-			stock_items_list_cells(null, 'stock_id', null, false, true, false, true, array('editable' => 30, 'where'=>array("NOT no_purchase")));
+			stock_purchasable_items_list_cells(null, 'stock_id', null, false, true, false, true, array('editable' => 30, 'where'=>array("NOT no_purchase")));
 
 		if (list_updated('stock_id')) {
 			    $Ajax->activate('price');

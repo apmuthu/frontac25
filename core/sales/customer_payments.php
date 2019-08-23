@@ -89,12 +89,21 @@ if (!isset($_POST['customer_id'])) {
 	$_POST['bank_account'] = $dflt_act['id'];
 }
 if (!isset($_POST['DateBanked'])) {
-	$_POST['DateBanked'] = new_doc_date();
+	$_SESSION['alloc']->date_ =$_POST['DateBanked'] = new_doc_date();
 	if (!is_date_in_fiscalyear($_POST['DateBanked'])) {
 		$_POST['DateBanked'] = end_fiscalyear();
 	}
 }
 
+if (get_post('_DateBanked_changed')) {
+	if (!is_date($_POST['DateBanked'])) {
+		display_error(_("The entered date is invalid. Please enter a valid date for the payment."));
+		set_focus('DateBanked');
+	} else {
+		$_SESSION['alloc']->date_ = get_post('DateBanked');
+		$Ajax->activate('_page_body');
+	}
+}
 
 if (isset($_GET['AddedID'])) {
 	$payment_no = $_GET['AddedID'];
@@ -189,20 +198,9 @@ function can_process()
 		}	
 	}
 
-	if (@$_POST['discount'] == "") 
-	{
-		$_POST['discount'] = 0;
-	}
-
-	if (!check_num('discount')) {
-		display_error(_("The entered discount is not a valid number."));
-		set_focus('discount');
-		return false;
-	}
-
 	if (input_num('amount') <= 0) {
 		display_error(_("The balance of the amount and discount is zero or negative. Please enter valid amounts."));
-		set_focus('discount');
+		set_focus('amount');
 		return false;
 	}
 
@@ -238,14 +236,10 @@ if (get_post('AddPaymentItem') && can_process()) {
 	new_doc_date($_POST['DateBanked']);
 
 	$new_pmt = !$_SESSION['alloc']->trans_no;
-	//Chaitanya : 13-OCT-2011 - To support Edit feature
-	$payment_no = write_customer_payment($_SESSION['alloc']->trans_no, $_POST['customer_id'], $_POST['BranchID'],
-		$_POST['bank_account'], $_POST['DateBanked'], $_POST['ref'],
-		input_num('amount'), input_num('discount'), $_POST['memo_'], 0, input_num('charge'), input_num('bank_amount', input_num('amount')));
 
-	$_SESSION['alloc']->trans_no = $payment_no;
-	$_SESSION['alloc']->date_ = $_POST['DateBanked'];
-	$_SESSION['alloc']->write();
+	$payment_no =  save_cust_payment($_SESSION['alloc'], get_post('customer_id'), get_post('BranchID'), get_post('bank_account'),
+		get_post('DateBanked'), get_post('ref'), input_num('amount'), get_post('memo_'),
+		input_num('charge'), input_num('bank_amount', input_num('amount')));
 
 	unset($_SESSION['alloc']);
 	meta_forward($_SERVER['PHP_SELF'], $new_pmt ? "AddedID=$payment_no" : "UpdatedID=$payment_no");
@@ -260,7 +254,6 @@ function read_customer_data()
 	$myrow = get_customer_habit($_POST['customer_id']);
 
 	$_POST['HoldAccount'] = $myrow["dissallow_invoices"];
-	$_POST['pymt_discount'] = $myrow["pymt_discount"];
 	// To support Edit feature
 	// If page is called first time and New entry fetch the nex reference number
 	if (!$_SESSION['alloc']->trans_no && !isset($_POST['charge'])) 
@@ -283,11 +276,10 @@ if (isset($_GET['trans_no']) && $_GET['trans_no'] > 0 )
 	$_POST['BranchID'] = $myrow["branch_code"];
 	$_POST['bank_account'] = $myrow["bank_act"];
 	$_POST['ref'] =  $myrow["reference"];
-	$charge = get_cust_bank_charge(ST_CUSTPAYMENT, $_POST['trans_no']);
-	$_POST['charge'] =  price_format($charge);
+	$_POST['charge'] =  price_format(-$myrow['bank_charge']);
 	$_POST['DateBanked'] =  sql2date($myrow['tran_date']);
 	$_POST["amount"] = price_format($myrow['Total'] - $myrow['ov_discount']);
-	$_POST["bank_amount"] = price_format($myrow['bank_amount']+$charge);
+	$_POST["bank_amount"] = price_format($myrow['bank_amount']);
 	$_POST["discount"] = price_format($myrow['ov_discount']);
 	$_POST["memo_"] = get_comments_string(ST_CUSTPAYMENT,$_POST['trans_no']);
 
@@ -300,6 +292,7 @@ if (isset($_GET['trans_no']) && $_GET['trans_no'] > 0 )
 		$Ajax->activate('alloc_tbl');
 	}
 }
+
 
 //----------------------------------------------------------------------------------------------
 $new = !$_SESSION['alloc']->trans_no;
@@ -342,7 +335,6 @@ read_customer_data();
 set_global_customer($_POST['customer_id']);
 if (isset($_POST['HoldAccount']) && $_POST['HoldAccount'] != 0)	
 	display_warning(_("This customer account is on hold."));
-$display_discount_percent = percent_format($_POST['pymt_discount']*100) . "%";
 
 table_section(2);
 
@@ -373,14 +365,14 @@ div_end();
 
 start_table(TABLESTYLE, "width='60%'");
 
-label_row(_("Customer prompt payment discount :"), $display_discount_percent);
-
-amount_row(_("Amount of Discount:"), 'discount', null, '', $cust_currency);
+label_row(_("Total Discount:"), price_format(input_num('discount')), '','', 0, 'discount');
 
 amount_row(_("Amount:"), 'amount', null, '', $cust_currency);
 
 textarea_row(_("Memo:"), 'memo_', null, 22, 4);
 end_table(1);
+
+hidden('discount', null);
 
 if ($new)
 	submit_center('AddPaymentItem', _("Add Payment"), true, '', 'default');

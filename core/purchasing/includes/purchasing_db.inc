@@ -33,14 +33,11 @@ include_once($path_to_root . "/purchasing/includes/db/suppliers_db.inc");
 // $amount is in SUPPLIERS'S currency
 
 function add_gl_trans_supplier($type, $type_no, $date_, $account, $dimension, $dimension2,  
-	$amount, $supplier_id, $err_msg="", $rate=0, $memo="")
+	$amount, $supplier_id, $rate=0, $memo="")
 {
-	if ($err_msg == "")
-		$err_msg = "The supplier GL transaction could not be inserted";	
-		
 	return add_gl_trans($type, $type_no, $date_, $account, $dimension, $dimension2, $memo, 
 		$amount, get_supplier_currency($supplier_id), 
-		PT_SUPPLIER, $supplier_id, $err_msg, $rate);
+		PT_SUPPLIER, $supplier_id, $rate);
 }
 
 //----------------------------------------------------------------------------------------
@@ -142,6 +139,9 @@ function get_po_prepayments($supp_trans)
 	return $allocations;
 }
 
+
+//------------------------------------ Backend interfaces--------------------------------------------
+
 //---------------------------------------------------------------------------------------------------
 //
 //	Add Purchase Order, GRN or Purchase Invoice with parent auto documents (if any)
@@ -150,31 +150,33 @@ function add_direct_supp_trans($cart)
 {
 	global $Refs, $type_shortcuts;
 
+	begin_transaction(__FUNCTION__, func_get_args());
+
 	if ($cart->trans_type != ST_PURCHORDER) {
 		// for direct grn/invoice set same dates for lines as for whole document
 		foreach ($cart->line_items as $line_no =>$line)
-			$cart->line_items[$line_no]->req_del_date = $cart->orig_order_date;
+			$cart->line_items[$line_no]->req_del_date = $cart->tran_date;
 	}
 
 	$ref = $cart->reference;
 	if ($cart->trans_type != ST_PURCHORDER) {
 		$cart->reference = 'auto';
-		begin_transaction();	// all db changes as single transaction for direct document
 	}
 	$order_no = add_po($cart);
    	$cart->order_no = $order_no;
 
-	if ($cart->trans_type == ST_PURCHORDER)
+	if ($cart->trans_type == ST_PURCHORDER) {
+		commit_transaction();
 		return $order_no;
+	}
 
 	//Direct GRN
 	if ($cart->trans_type == ST_SUPPRECEIVE)
 		$cart->reference = $ref;
 	if ($cart->trans_type != ST_SUPPINVOICE)
 		$cart->Comments = $cart->reference; //grn does not hold supp_ref
-	foreach($cart->line_items as $key => $line)
-		$cart->line_items[$key]->receive_qty = $line->quantity;
-	$grn_no = add_grn($cart);
+
+	$grn_no = write_grn($cart);
 	if ($cart->trans_type == ST_SUPPRECEIVE) {
 		commit_transaction(); // save PO+GRN
 		return $grn_no;
@@ -183,7 +185,7 @@ function add_direct_supp_trans($cart)
 	$inv = new supp_trans(ST_SUPPINVOICE);
 	$inv->Comments = $cart->Comments;
 	$inv->supplier_id = $cart->supplier_id;
-	$inv->tran_date = $cart->orig_order_date;
+	$inv->tran_date = $cart->tran_date;
 	$inv->due_date = $cart->due_date;
 	$inv->dimension = $cart->dimension;
 	$inv->dimension2 = $cart->dimension2;
@@ -195,14 +197,15 @@ function add_direct_supp_trans($cart)
 	$inv->ov_amount = $inv->ov_gst = $inv->ov_discount = 0;
 	$total = 0;
 		foreach($cart->line_items as $key => $line) {
-		$inv->add_grn_to_trans($line->grn_item_id, $line->po_detail_rec, $line->stock_id,
-			$line->item_description, $line->receive_qty, 0, $line->receive_qty,
+		$inv->add_grn_to_trans($line->grn_item_id, $line->po_item_id, $line->stock_id,
+			$line->item_description, $line->quantity, 0, $line->quantity,
 			$line->price, $line->price, true, get_unit_cost($line->stock_id), '');
-		$total += round2(($line->receive_qty * $line->price), user_price_dec());
+
+		$total += round2(($line->quantity * $line->price), user_price_dec());
 	}
 	$inv->tax_overrides = $cart->tax_overrides;
 	if (!$inv->tax_included) {
-		$taxes = $inv->get_taxes($inv->tax_group_id, 0, false);
+		$taxes = $inv->get_taxes();
 		foreach( $taxes as $taxitem) {
 			$total += isset($taxitem['Override']) ? $taxitem['Override'] : $taxitem['Value'];
 		}
@@ -220,5 +223,63 @@ function add_direct_supp_trans($cart)
 	}
 	commit_transaction(); // save PO+GRN+PI(+SP)
 	return $inv_no;
+}
+
+function write_supplier($supplier_id, $supp_name, $ref, $address, $supp_address, $gst_no,
+				$website, $supp_account_no, $bank_account, $credit_limit = 0, $dim1, $dim2, $curr_code,
+				$payment_terms, $payable_account, $purchase_account, $payment_discount_account,
+				$notes, $tax_group_id, $tax_included, $contact, $phone, $phone2, $fax, $email, $lang, $inactive=null)
+{
+		begin_transaction(__FUNCTION__, func_get_args());
+		if ($supplier_id) {
+			update_supplier($supplier_id, $supp_name, $ref, $address, $supp_address, $gst_no,
+					$website, $supp_account_no, $bank_account, $credit_limit = 0, $dim1, $dim2, $curr_code,
+					$payment_terms, $payable_account, $purchase_account, $payment_discount_account,
+					$notes, $tax_group_id, $tax_included);
+
+			if ( isset($inactive) )
+				update_record_status($supplier_id, $inactive, 'suppliers', 'supplier_id');
+		} else {
+			add_supplier($supp_name, $ref, $address, $supp_address, $gst_no,
+					$website, $supp_account_no, $bank_account, $credit_limit = 0, $dim1, $dim2, $curr_code,
+					$payment_terms, $payable_account, $purchase_account, $payment_discount_account,
+					$notes, $tax_group_id, $tax_included);
+			$supplier_id = db_insert_id();
+
+			add_crm_person($ref, $contact, '', $address, $phone, $phone2, $fax, $email, $lang, '');
+
+			add_crm_contact('supplier', 'general', $supplier_id, db_insert_id());
+		}
+		commit_transaction();
+		return $supplier_id;
+}
+
+function write_supp_allocation($cart)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+		$result = $cart->write();
+	commit_transaction();
+	return $result;
+}
+
+function save_supp_payment($cart, $supplier_id, $bank_account, $trans_date, $ref, $amount, $memo, $charge, $bank_amount)
+{
+	begin_transaction(__FUNCTION__, func_get_args());
+
+	$discount = 0;
+	foreach($cart->allocs as $alloc)
+		if ($alloc->discount_confirmed)
+			$discount += $alloc->early_discount*$alloc->amount;
+
+	$payment_no = write_supp_payment($cart->trans_no, $supplier_id, $bank_account, $trans_date, $ref, $amount,
+		$discount, $memo, $charge, $bank_amount);
+
+	$cart->trans_no = $payment_no;
+	$cart->date_ = $trans_date;
+	$cart->write();
+
+	commit_transaction();
+
+	return $payment_no;
 }
 

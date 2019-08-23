@@ -550,7 +550,7 @@ function display_allocations($alloc_result, $total, $title, $show_summary=true)
     start_table(TABLESTYLE, "width='80%'");
 
     $th = array( _("Type"), _("Number"), _("Date"), _("Total Amount"),
-    	_("Left to Allocate"), _("This Allocation"));
+    	_("Left to Allocate"), _("Discount"), _("This Payment"), _("Allocated"));
 	table_header($th);
     $k = $total_allocated = 0;
 
@@ -563,23 +563,23 @@ function display_allocations($alloc_result, $total, $title, $show_summary=true)
     	label_cell(sql2date($alloc_row['tran_date']));
     	$alloc_row['Total'] = round2($alloc_row['Total'], user_price_dec());
     	$alloc_row['amt'] = round2($alloc_row['amt'], user_price_dec());
-    	if ($alloc_row['type'] == ST_SUPPAYMENT || $alloc_row['type'] == ST_BANKPAYMENT || $alloc_row['type'] == ST_SUPPCREDIT)
-    		$alloc_row['Total'] = -$alloc_row['Total'];
-    	amount_cell($alloc_row['Total']);
-   		amount_cell($alloc_row['Total'] - $alloc_row['alloc']);
+    	amount_cell(abs($alloc_row['Total']));
+   		amount_cell(abs($alloc_row['Total']) - $alloc_row['alloc']);
+    	amount_cell($alloc_row['discount']);
+    	amount_cell($alloc_row['amt']-$alloc_row['discount']);
     	amount_cell($alloc_row['amt']);
     	end_row();
 
     	$total_allocated += $alloc_row['amt'];
     }
     start_row();
-   	label_cell(_("Total Allocated:"), "align=right colspan=5");
+   	label_cell(_("Total Allocated:"), "align=right colspan=7");
 	amount_cell($total_allocated);
 	end_row();
 	if ($show_summary)
 	{
 		start_row();
-	    label_cell(_("Left to Allocate:"), "align=right colspan=5");
+	    label_cell(_("Left to Allocate:"), "align=right colspan=7");
 	    $total = round2($total, user_price_dec());
     	amount_cell($total - $total_allocated);
     	end_row();
@@ -594,11 +594,11 @@ function display_allocations_from($person_type, $person_id, $type, $type_no, $to
 	switch ($person_type)
 	{
 		case PT_CUSTOMER :
-			$alloc_result = get_allocatable_to_cust_transactions($person_id, $type_no, $type);
+			$alloc_result = get_allocatable_to_cust_transactions(0, $type_no, $type);
 			display_allocations($alloc_result, $total, _("Allocations"));
 			return;
 		case PT_SUPPLIER :
-			$alloc_result = get_allocatable_to_supp_transactions($person_id, $type_no, $type);
+			$alloc_result = get_allocatable_to_supp_transactions(0, $type_no, $type);
 			display_allocations($alloc_result, $total, _("Allocations"));
 			return;
 	}
@@ -1566,7 +1566,7 @@ function trans_editor_link($type, $trans_no)
 		ST_SUPPCREDIT =>  "/purchasing/supplier_credit.php?ModifyCredit=%d",
 //   21=> Supplier Credit Note,
 //   22=> Supplier Payment,
-//   25=> Purchase Order Delivery,
+		ST_SUPPRECEIVE => "/purchasing/po_receive_items.php?ModifyGRN=%d",
 		ST_PURCHORDER => "/purchasing/po_entry_items.php?ModifyOrderNumber=%d",
 //   28=> Work Order Issue,
 //   29=> Work Order Production",

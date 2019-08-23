@@ -189,7 +189,7 @@ if (isset($_POST['Update'])) {
 	$Ajax->activate('Items');
 }
 if (isset($_POST['_InvoiceDate_changed'])) {
-	$_POST['due_date'] = get_invoice_duedate($_SESSION['Items']->payment, $_POST['InvoiceDate']);
+	$_POST['due_date'] = get_payment_due_date($_SESSION['Items']->payment, $_POST['InvoiceDate']);
 	$Ajax->activate('due_date');
 }
 
@@ -341,7 +341,7 @@ function check_data()
 			return false;
 		}
 	} else {
-		if (($_SESSION['Items']->payment_terms['days_before_due'] == -1) && !count($_SESSION['Items']->prepayments)) {
+		if (($_SESSION['Items']->payment_terms['type'] == PTT_PREPAY) && !count($_SESSION['Items']->prepayments)) {
 			display_error(_("There is no non-invoiced payments for this order. If you want to issue final invoice, select delayed or cash payment terms."));
 			return false;
 		}
@@ -358,7 +358,7 @@ if (isset($_POST['process_invoice']) && check_data()) {
 	if ($newinvoice) 
 		new_doc_date($_SESSION['Items']->document_date);
 
-	$invoice_no = $_SESSION['Items']->write();
+	$invoice_no = write_sales_trans($_SESSION['Items']);
 	if ($invoice_no == -1)
 	{
 		display_error(_("The entered reference is already in use."));
@@ -381,11 +381,11 @@ if(list_updated('payment')) {
 	copy_to_cart();
 	$order->payment = get_post('payment');
 	$order->payment_terms = get_payment_terms($order->payment);
-	$_POST['due_date'] = $order->due_date = get_invoice_duedate($order->payment, $order->document_date);
+	$_POST['due_date'] = $order->due_date = get_payment_due_date($order->payment, $order->document_date);
 	$_POST['Comments'] = '';
 	$Ajax->activate('due_date');
 	$Ajax->activate('options');
-	if ($order->payment_terms['cash_sale']) {
+	if ($order->payment_terms['type'] == PTT_CASH) {
 		$_POST['Location'] = $order->Location = $order->pos['pos_location'];
 		$order->location_name = $order->pos['location_name'];
 	}
@@ -467,13 +467,13 @@ start_row();
 if (!isset($_POST['ship_via'])) {
 	$_POST['ship_via'] = $_SESSION['Items']->ship_via;
 }
-label_cell(_("Shipping Company"), "class='tableheader2'");
+label_cell(_("Shipping"), "class='tableheader2'");
 if ($prepaid)
 {
-	$shipper = get_shipper($_SESSION['Items']->ship_via);
-	label_cells(null, $shipper['shipper_name']);
+	$shipping = get_item($_SESSION['Items']->ship_via);
+	label_cells(null, $shipping['description']);
 } else
-	shippers_list_cells(null, 'ship_via', $_POST['ship_via']);
+	shipping_methods_list_cells(null, 'ship_via', $_POST['ship_via']);
 
 if (!isset($_POST['InvoiceDate']) || !is_date($_POST['InvoiceDate'])) {
 	$_POST['InvoiceDate'] = new_doc_date();
@@ -486,7 +486,7 @@ date_cells(_("Date"), 'InvoiceDate', '', $_SESSION['Items']->trans_no == 0,
 	0, 0, 0, "class='tableheader2'", true);
 
 if (!isset($_POST['due_date']) || !is_date($_POST['due_date'])) {
-	$_POST['due_date'] = get_invoice_duedate($_SESSION['Items']->payment, $_POST['InvoiceDate']);
+	$_POST['due_date'] = get_payment_due_date($_SESSION['Items']->payment, $_POST['InvoiceDate']);
 }
 
 date_cells(_("Due Date"), 'due_date', '', null, 0, 0, 0, "class='tableheader2'");
